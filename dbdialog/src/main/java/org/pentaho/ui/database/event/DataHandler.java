@@ -79,6 +79,7 @@ import org.pentaho.ui.xul.containers.XulVbox;
 import org.pentaho.ui.xul.containers.XulWindow;
 import org.pentaho.ui.xul.impl.AbstractXulEventHandler;
 
+import static org.pentaho.di.core.database.AzureSqlDataBaseMeta.SQL_AUTHENTICATION;
 import static org.pentaho.di.core.database.BaseDatabaseMeta.ATTRIBUTE_PREFIX_EXTRA_OPTION;
 import static org.pentaho.di.core.database.RedshiftDatabaseMeta.IAM_ACCESS_KEY_ID;
 import static org.pentaho.di.core.database.RedshiftDatabaseMeta.IAM_CREDENTIALS;
@@ -271,6 +272,9 @@ public class DataHandler extends AbstractXulEventHandler {
   private XulTextbox iamSessionToken;
   private XulTextbox iamProfileName;
   protected XulMenuList namedClusterList;
+
+  //Azure SQL DB Variables
+  private XulMenuList azureSqlJdbcAuthMethod;
 
   public DataHandler() {
     databaseDialects = new ArrayList<String>();
@@ -1375,6 +1379,11 @@ public class DataHandler extends AbstractXulEventHandler {
         useIntegratedSecurity != null ? useIntegratedSecurity.toString() : "false" );
     }
 
+    //Azure SQL DB
+    if ( azureSqlJdbcAuthMethod != null ) {
+      meta.getAttributes().put( JDBC_AUTH_METHOD, azureSqlJdbcAuthMethod.getValue() );
+    }
+
     if ( jdbcAuthMethod != null ) {
       meta.getAttributes().put( JDBC_AUTH_METHOD, jdbcAuthMethod.getValue() );
     }
@@ -1525,6 +1534,11 @@ public class DataHandler extends AbstractXulEventHandler {
       }
     }
 
+    if ( azureSqlJdbcAuthMethod != null ) {
+      azureSqlJdbcAuthMethod.setValue( meta.getAttributes().getProperty( JDBC_AUTH_METHOD, SQL_AUTHENTICATION ) );
+      //setAuthFieldsVisible();
+    }
+
     if ( jdbcAuthMethod != null ) {
       jdbcAuthMethod.setValue( meta.getAttributes().getProperty( JDBC_AUTH_METHOD, STANDARD_CREDENTIALS ) );
       setAuthFieldsVisible();
@@ -1614,6 +1628,8 @@ public class DataHandler extends AbstractXulEventHandler {
     iamSessionToken = (XulTextbox) document.getElementById( "iam-session-token" );
     iamProfileName = (XulTextbox) document.getElementById( "iam-profile-name" );
     namedClusterList = (XulMenuList) document.getElementById( "named-cluster-list" );
+    //azure SQL DB
+    azureSqlJdbcAuthMethod = (XulMenuList) document.getElementById( "azuresql-auth-method-list" );
 
     if ( portNumberBox != null && serverInstanceBox != null ) {
       if ( Boolean.parseBoolean( serverInstanceBox.getAttributeValue( "shouldDisablePortIfPopulated" ) ) ) {

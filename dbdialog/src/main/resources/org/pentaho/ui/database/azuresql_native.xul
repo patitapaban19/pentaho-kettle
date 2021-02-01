@@ -1,0 +1,29 @@
+<groupbox id="database-options-box" orient="vertical" flex="1"
+          xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+          xmlns:pen="http://www.pentaho.org/2008/xul">
+    <caption label="${DatabaseDialog.USER_SETTINGS}"/>
+    <vbox style="overflow:auto;">
+        <label id="server-host-name-label" value="${DatabaseDialog.label.ServerHostname}" />
+        <textbox pen:customclass="variabletextbox" id="server-host-name-text"  />
+        <label id="database-name-label" value="${DatabaseDialog.label.DatabaseName}" />
+        <textbox pen:customclass="variabletextbox" id="database-name-text"/>
+        <label id="port-number-label" value="${DatabaseDialog.label.PortNumber}" />
+        <textbox pen:customclass="variabletextbox" id="port-number-text" />
+        <label id="username-label" value="${DatabaseDialog.label.Username}" />
+        <textbox pen:customclass="variabletextbox" id="username-text" />
+        <spacer height="7"/>
+        <separator/>
+        <label id="auth-method-label" value="${DatabaseDialog.label.AuthenticationMethod}" />
+        <menulist id="azuresql-auth-method-list" editable="true" value = "SQL Authentication" oncommand="fragmentHandler.setAuthMethodVisibility()">
+            <menupopup>
+                <menuitem label="SQL Authentication"/>
+                <menuitem label="Azure Active Directory - Password"/>
+                <menuitem label="Azure Active Directory - Integrated"/>
+            </menupopup>
+        </menulist>
+        <vbox id="auth-controls">
+            <label id="password-label" value="${DatabaseDialog.label.Password}" />
+            <textbox pen:customclass="variabletextbox" id="password-text" type="password"/>
+        </vbox>
+    </vbox>
+</groupbox>
