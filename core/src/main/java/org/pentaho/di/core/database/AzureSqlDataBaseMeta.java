@@ -22,7 +22,12 @@
 package org.pentaho.di.core.database;
 
 import org.pentaho.di.core.encryption.Encr;
+import org.pentaho.di.core.exception.KettleDatabaseException;
+import org.pentaho.di.core.row.ValueMetaInterface;
 
+import java.sql.Blob;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -43,6 +48,9 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
   public static final String PROFILE_CREDENTIALS = "Profile";
 
   public static final String JDBC_AUTH_METHOD = "jdbcAuthMethod";
+  public static final String IS_ALWAYS_ENCRYPTION_ENABLED = "azureAlwaysEncryptionEnabled";
+  public static final String CLIENT_ID = "azureClientSecretId";
+  public static final String CLIENT_SECRET_KEY = "azureClientSecretKey";
   public static final String IAM_ACCESS_KEY_ID = "iamAccessKeyId";
   public static final String IAM_SECRET_ACCESS_KEY = "iamSecretAccessKey";
   public static final String IAM_SESSION_TOKEN = "iamSessionToken";
@@ -66,13 +74,55 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
     if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC ) {
       return "jdbc:odbc:" + databaseName;
     } else {
+      String url = "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;";
+
+      if (getAttribute(IS_ALWAYS_ENCRYPTION_ENABLED, "").equals("true")) {
+        url += "columnEncryptionSetting=Enabled;keyVaultProviderClientId=" + getAttribute(CLIENT_ID, "") + ";keyVaultProviderClientKey=" + getAttribute(CLIENT_SECRET_KEY, "") + ";";
+      }
       if ( ACTIVE_DIRECTORY_PASSWORD.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {
-        return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;authentication=ActiveDirectoryPassword";
+        //return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;authentication=ActiveDirectoryPassword";
+        return url + "authentication=ActiveDirectoryPassword;";
+
       } else {
-        return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30";
+        //return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30";
+        return url;
       }
     }
   }
+
+  /**
+   * This method allows a database dialect to convert database specific data types to Kettle data types.
+   *
+   * @param rs
+   *          The result set to use
+   * @param val
+   *          The description of the value to retrieve
+   * @param index
+   *          the index on which we need to retrieve the value, 0-based.
+   * @return The correctly converted Kettle data type corresponding to the valueMeta description.
+   * @throws KettleDatabaseException
+   */
+  @Override
+  public Object getValueFromResultSet(ResultSet rs, ValueMetaInterface val, int index ) throws KettleDatabaseException {
+    Object data;
+    try {
+      switch (val.getType()) {
+        case ValueMetaInterface.TYPE_BINARY:
+          data = rs.getString(index + 1);
+          break;
+        default:
+          return super.getValueFromResultSet( rs, val, index );
+      }
+      if ( rs.wasNull() ) {
+        data = null;
+      }
+    } catch ( SQLException e ) {
+      throw new KettleDatabaseException( "Unable to get value '"
+          + val.toStringMeta() + "' from database resultset, index " + index, e );
+    }
+    return data;
+  }
+
 
   /*@Override public void putOptionalOptions( Map<String, String> extraOptions ) {
     if ( IAM_CREDENTIALS.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {

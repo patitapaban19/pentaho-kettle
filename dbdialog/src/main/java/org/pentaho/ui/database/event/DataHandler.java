@@ -79,6 +79,9 @@ import org.pentaho.ui.xul.containers.XulVbox;
 import org.pentaho.ui.xul.containers.XulWindow;
 import org.pentaho.ui.xul.impl.AbstractXulEventHandler;
 
+import static org.pentaho.di.core.database.AzureSqlDataBaseMeta.CLIENT_SECRET_KEY;
+import static org.pentaho.di.core.database.AzureSqlDataBaseMeta.CLIENT_ID;
+import static org.pentaho.di.core.database.AzureSqlDataBaseMeta.IS_ALWAYS_ENCRYPTION_ENABLED;
 import static org.pentaho.di.core.database.AzureSqlDataBaseMeta.SQL_AUTHENTICATION;
 import static org.pentaho.di.core.database.BaseDatabaseMeta.ATTRIBUTE_PREFIX_EXTRA_OPTION;
 import static org.pentaho.di.core.database.RedshiftDatabaseMeta.IAM_ACCESS_KEY_ID;
@@ -275,6 +278,9 @@ public class DataHandler extends AbstractXulEventHandler {
 
   //Azure SQL DB Variables
   private XulMenuList azureSqlJdbcAuthMethod;
+  private XulCheckbox azureAlwaysEncryptionEnabled;
+  private XulTextbox azureClientSecretId;
+  private XulTextbox azureClientSecretKey;
 
   public DataHandler() {
     databaseDialects = new ArrayList<String>();
@@ -965,13 +971,30 @@ public class DataHandler extends AbstractXulEventHandler {
     onClusterCheck();
   }
 
+  public void onAlwaysEncryption() {
+    if (azureAlwaysEncryptionEnabled != null) {
+      boolean isAlwaysEncryptionEnabled = azureAlwaysEncryptionEnabled.isChecked();
+      if (isAlwaysEncryptionEnabled == false) {
+        azureClientSecretId.setDisabled(true);
+        azureClientSecretKey.setDisabled(true);
+      } else {
+        azureClientSecretId.setDisabled(false);
+        azureClientSecretKey.setDisabled(false);
+      }
+    }
+
+  }
+
   @SuppressWarnings ( "unused" )
   public void setAuthFieldsVisible() {
     jdbcAuthMethod = (XulMenuList) document.getElementById( "redshift-auth-method-list" );
     XulVbox standardControls = (XulVbox) document.getElementById( "auth-standard-controls" );
     XulVbox iamControls = (XulVbox) document.getElementById( "auth-iam-controls" );
     XulVbox profileControls = (XulVbox) document.getElementById( "auth-profile-controls" );
-    String jdbcAuthMethodValue = jdbcAuthMethod.getValue();
+    String jdbcAuthMethodValue = "";
+    //if (jdbcAuthMethod != null) {
+      jdbcAuthMethodValue = jdbcAuthMethod.getValue();
+    //}
     switch ( jdbcAuthMethodValue ) {
       case IAM_CREDENTIALS:
         standardControls.setVisible( false );
@@ -1378,10 +1401,24 @@ public class DataHandler extends AbstractXulEventHandler {
         MSSQLServerNativeDatabaseMeta.ATTRIBUTE_USE_INTEGRATED_SECURITY,
         useIntegratedSecurity != null ? useIntegratedSecurity.toString() : "false" );
     }
-
     //Azure SQL DB
     if ( azureSqlJdbcAuthMethod != null ) {
       meta.getAttributes().put( JDBC_AUTH_METHOD, azureSqlJdbcAuthMethod.getValue() );
+    }
+
+    if (azureClientSecretId != null) {
+      meta.getAttributes().put( CLIENT_ID, azureClientSecretId.getValue());
+    }
+    if (azureAlwaysEncryptionEnabled != null) {
+      if (azureAlwaysEncryptionEnabled.isChecked()) {
+        meta.getAttributes().put(IS_ALWAYS_ENCRYPTION_ENABLED, "true");
+      } else {
+        meta.getAttributes().put(IS_ALWAYS_ENCRYPTION_ENABLED, "false");
+      }
+    }
+
+    if(azureClientSecretKey != null) {
+      meta.getAttributes().put(CLIENT_SECRET_KEY, azureClientSecretKey.getValue());
     }
 
     if ( jdbcAuthMethod != null ) {
@@ -1630,6 +1667,9 @@ public class DataHandler extends AbstractXulEventHandler {
     namedClusterList = (XulMenuList) document.getElementById( "named-cluster-list" );
     //azure SQL DB
     azureSqlJdbcAuthMethod = (XulMenuList) document.getElementById( "azuresql-auth-method-list" );
+    azureAlwaysEncryptionEnabled = (XulCheckbox) document.getElementById( "always-encryption-enable" );
+    azureClientSecretId = (XulTextbox) document.getElementById( "client-id-text" );
+    azureClientSecretKey = (XulTextbox) document.getElementById( "client-secret-key-text" );
 
     if ( portNumberBox != null && serverInstanceBox != null ) {
       if ( Boolean.parseBoolean( serverInstanceBox.getAttributeValue( "shouldDisablePortIfPopulated" ) ) ) {

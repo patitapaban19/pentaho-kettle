@@ -11,6 +11,12 @@
         <textbox pen:customclass="variabletextbox" id="port-number-text" />
         <label id="username-label" value="${DatabaseDialog.label.Username}" />
         <textbox pen:customclass="variabletextbox" id="username-text" />
+        <checkbox id="always-encryption-enable" label="${DatabaseDialog.label.AlwaysEncryptionEnable}" checked="false"
+                  command = "dataHandler.onAlwaysEncryption()" />
+        <label id="client-id-label" value="${DatabaseDialog.label.ClientId}" />
+        <textbox pen:customclass="variabletextbox" id="client-id-text" disabled="true" />
+        <label id="client-secret-key-label" value="${DatabaseDialog.label.ClientSecretKey}" />
+        <textbox pen:customclass="variabletextbox" id="client-secret-key-text" disabled="true" />
         <spacer height="7"/>
         <separator/>
         <label id="auth-method-label" value="${DatabaseDialog.label.AuthenticationMethod}" />
