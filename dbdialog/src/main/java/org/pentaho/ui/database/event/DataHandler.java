@@ -969,6 +969,7 @@ public class DataHandler extends AbstractXulEventHandler {
     setDeckChildIndex();
     onPoolingCheck();
     onClusterCheck();
+    onAlwaysEncryption();
   }
 
   public void onAlwaysEncryption() {
@@ -992,9 +993,9 @@ public class DataHandler extends AbstractXulEventHandler {
     XulVbox iamControls = (XulVbox) document.getElementById( "auth-iam-controls" );
     XulVbox profileControls = (XulVbox) document.getElementById( "auth-profile-controls" );
     String jdbcAuthMethodValue = "";
-    //if (jdbcAuthMethod != null) {
+    if (jdbcAuthMethod != null) {
       jdbcAuthMethodValue = jdbcAuthMethod.getValue();
-    //}
+    }
     switch ( jdbcAuthMethodValue ) {
       case IAM_CREDENTIALS:
         standardControls.setVisible( false );
@@ -1574,6 +1575,24 @@ public class DataHandler extends AbstractXulEventHandler {
     if ( azureSqlJdbcAuthMethod != null ) {
       azureSqlJdbcAuthMethod.setValue( meta.getAttributes().getProperty( JDBC_AUTH_METHOD, SQL_AUTHENTICATION ) );
       //setAuthFieldsVisible();
+    }
+
+    if (azureAlwaysEncryptionEnabled != null){
+      if (meta.getAttributes().getProperty(IS_ALWAYS_ENCRYPTION_ENABLED) != null) {
+        if(meta.getAttributes().getProperty(IS_ALWAYS_ENCRYPTION_ENABLED).equals("true")) {
+          azureAlwaysEncryptionEnabled.setChecked(true);
+        } else {
+          azureAlwaysEncryptionEnabled.setChecked(false);
+        }
+      }
+    }
+
+    if (azureClientSecretId != null) {
+      azureClientSecretId.setValue(meta.getAttributes().getProperty( CLIENT_ID ));
+    }
+
+    if(azureClientSecretKey != null) {
+      azureClientSecretKey.setValue(meta.getAttributes().getProperty( CLIENT_SECRET_KEY ));
     }
 
     if ( jdbcAuthMethod != null ) {
