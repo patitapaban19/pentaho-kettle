@@ -56,8 +56,9 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
   public static final String IAM_SESSION_TOKEN = "iamSessionToken";
   public static final String IAM_PROFILE_NAME = "iamProfileName";
 
-  public static final String SQL_AUTHENTICATION = "SQL Authentication";
+  public static final String SQL_AUTHENTICATION = "SQL Server Authentication";
   public static final String ACTIVE_DIRECTORY_PASSWORD = "Azure Active Directory - Password";
+  public static final String ACTIVE_DIRECTORY_MFA = "Azure Active Directory - Universal With MFA";
 
 
   @Override
@@ -76,13 +77,14 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
     } else {
       String url = "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;";
 
-      if (getAttribute(IS_ALWAYS_ENCRYPTION_ENABLED, "").equals("true")) {
-        url += "columnEncryptionSetting=Enabled;keyVaultProviderClientId=" + getAttribute(CLIENT_ID, "") + ";keyVaultProviderClientKey=" + getAttribute(CLIENT_SECRET_KEY, "") + ";";
+      if ( getAttribute( IS_ALWAYS_ENCRYPTION_ENABLED, "" ).equals( "true" )) {
+        url += "columnEncryptionSetting=Enabled;keyVaultProviderClientId=" + getAttribute( CLIENT_ID, "" ) + ";keyVaultProviderClientKey=" + getAttribute( CLIENT_SECRET_KEY, "" ) + ";";
       }
       if ( ACTIVE_DIRECTORY_PASSWORD.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {
         //return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;authentication=ActiveDirectoryPassword";
         return url + "authentication=ActiveDirectoryPassword;";
-
+      } else if ( ACTIVE_DIRECTORY_MFA.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {
+        return url + "authentication=ActiveDirectoryInteractive";
       } else {
         //return "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30";
         return url;

@@ -12,7 +12,7 @@
         <spacer height="7"/>
         <separator/>
         <label id="auth-method-label" value="${DatabaseDialog.label.AuthenticationMethod}" />
-        <menulist id="azuresql-auth-method-list" editable="true" value = "SQL Authentication" oncommand="fragmentHandler.setAuthMethodVisibility()">
+        <menulist id="azuresql-auth-method-list" editable="true" value = "SQL Server Authentication" oncommand="dataHandler.setAzureAuthRelatedFieldsVisible()">
             <menupopup>
                 <menuitem label="SQL Server Authentication"/>
                 <menuitem label="Azure Active Directory - Universal With MFA"/>
@@ -31,7 +31,7 @@
         <checkbox id="always-encryption-enable" label="${DatabaseDialog.label.AlwaysEncryptionEnable}" checked="false"
                   command = "dataHandler.onAlwaysEncryption()" />
         <label id="client-id-label" value="${DatabaseDialog.label.ClientId}" />
-        <textbox pen:customclass="variabletextbox" id="client-id-text" disabled="true"/>
+        <textbox pen:customclass="variabletextbox" id="client-id-text" disabled="true" />
         <label id="client-secret-key-label" value="${DatabaseDialog.label.ClientSecretKey}" />
         <textbox pen:customclass="variabletextbox" id="client-secret-key-text" disabled="true" />
     </vbox>

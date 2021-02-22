@@ -972,15 +972,24 @@ public class DataHandler extends AbstractXulEventHandler {
     onAlwaysEncryption();
   }
 
+  public void setAzureAuthRelatedFieldsVisible() {
+    if (azureSqlJdbcAuthMethod != null && "Azure Active Directory - Universal With MFA".equals( azureSqlJdbcAuthMethod.getValue() ) ) {
+      passwordBox.setDisabled( true );
+    } else {
+      passwordBox.setDisabled( false );
+    }
+
+  }
+
   public void onAlwaysEncryption() {
-    if (azureAlwaysEncryptionEnabled != null) {
+    if ( azureAlwaysEncryptionEnabled != null ) {
       boolean isAlwaysEncryptionEnabled = azureAlwaysEncryptionEnabled.isChecked();
-      if (isAlwaysEncryptionEnabled == false) {
-        azureClientSecretId.setDisabled(true);
-        azureClientSecretKey.setDisabled(true);
+      if ( isAlwaysEncryptionEnabled == false ) {
+        azureClientSecretId.setDisabled( true );
+        azureClientSecretKey.setDisabled( true );
       } else {
-        azureClientSecretId.setDisabled(false);
-        azureClientSecretKey.setDisabled(false);
+        azureClientSecretId.setDisabled( false );
+        azureClientSecretKey.setDisabled( false );
       }
     }
 
@@ -1407,19 +1416,19 @@ public class DataHandler extends AbstractXulEventHandler {
       meta.getAttributes().put( JDBC_AUTH_METHOD, azureSqlJdbcAuthMethod.getValue() );
     }
 
-    if (azureClientSecretId != null) {
-      meta.getAttributes().put( CLIENT_ID, azureClientSecretId.getValue());
+    if ( azureClientSecretId != null ) {
+      meta.getAttributes().put( CLIENT_ID, azureClientSecretId.getValue() );
     }
-    if (azureAlwaysEncryptionEnabled != null) {
-      if (azureAlwaysEncryptionEnabled.isChecked()) {
-        meta.getAttributes().put(IS_ALWAYS_ENCRYPTION_ENABLED, "true");
+    if ( azureAlwaysEncryptionEnabled != null ) {
+      if ( azureAlwaysEncryptionEnabled.isChecked() ) {
+        meta.getAttributes().put( IS_ALWAYS_ENCRYPTION_ENABLED, "true" );
       } else {
-        meta.getAttributes().put(IS_ALWAYS_ENCRYPTION_ENABLED, "false");
+        meta.getAttributes().put( IS_ALWAYS_ENCRYPTION_ENABLED, "false" );
       }
     }
 
-    if(azureClientSecretKey != null) {
-      meta.getAttributes().put(CLIENT_SECRET_KEY, azureClientSecretKey.getValue());
+    if( azureClientSecretKey != null ) {
+      meta.getAttributes().put( CLIENT_SECRET_KEY, azureClientSecretKey.getValue() );
     }
 
     if ( jdbcAuthMethod != null ) {
