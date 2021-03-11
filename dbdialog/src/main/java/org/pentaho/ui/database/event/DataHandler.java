@@ -1001,10 +1001,7 @@ public class DataHandler extends AbstractXulEventHandler {
     XulVbox standardControls = (XulVbox) document.getElementById( "auth-standard-controls" );
     XulVbox iamControls = (XulVbox) document.getElementById( "auth-iam-controls" );
     XulVbox profileControls = (XulVbox) document.getElementById( "auth-profile-controls" );
-    String jdbcAuthMethodValue = "";
-    if (jdbcAuthMethod != null) {
-      jdbcAuthMethodValue = jdbcAuthMethod.getValue();
-    }
+    String jdbcAuthMethodValue = jdbcAuthMethod.getValue();
     switch ( jdbcAuthMethodValue ) {
       case IAM_CREDENTIALS:
         standardControls.setVisible( false );
