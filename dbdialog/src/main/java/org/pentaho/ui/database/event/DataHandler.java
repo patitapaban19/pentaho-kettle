@@ -973,7 +973,7 @@ public class DataHandler extends AbstractXulEventHandler {
   }
 
   public void setAzureAuthRelatedFieldsVisible() {
-    if (azureSqlJdbcAuthMethod != null && "Azure Active Directory - Universal With MFA".equals( azureSqlJdbcAuthMethod.getValue() ) ) {
+    if ( azureSqlJdbcAuthMethod != null && "Azure Active Directory - Universal With MFA".equals( azureSqlJdbcAuthMethod.getValue() ) ) {
       passwordBox.setDisabled( true );
     } else {
       passwordBox.setDisabled( false );
@@ -1583,22 +1583,22 @@ public class DataHandler extends AbstractXulEventHandler {
       //setAuthFieldsVisible();
     }
 
-    if (azureAlwaysEncryptionEnabled != null){
-      if (meta.getAttributes().getProperty(IS_ALWAYS_ENCRYPTION_ENABLED) != null) {
-        if(meta.getAttributes().getProperty(IS_ALWAYS_ENCRYPTION_ENABLED).equals("true")) {
-          azureAlwaysEncryptionEnabled.setChecked(true);
+    if ( azureAlwaysEncryptionEnabled != null ) {
+      if ( meta.getAttributes().getProperty( IS_ALWAYS_ENCRYPTION_ENABLED ) != null ) {
+        if( meta.getAttributes().getProperty( IS_ALWAYS_ENCRYPTION_ENABLED ).equals( "true" ) ) {
+          azureAlwaysEncryptionEnabled.setChecked( true );
         } else {
-          azureAlwaysEncryptionEnabled.setChecked(false);
+          azureAlwaysEncryptionEnabled.setChecked( false );
         }
       }
     }
 
-    if (azureClientSecretId != null) {
-      azureClientSecretId.setValue(meta.getAttributes().getProperty( CLIENT_ID ));
+    if ( azureClientSecretId != null ) {
+      azureClientSecretId.setValue( meta.getAttributes().getProperty( CLIENT_ID ) );
     }
 
-    if(azureClientSecretKey != null) {
-      azureClientSecretKey.setValue(meta.getAttributes().getProperty( CLIENT_SECRET_KEY ));
+    if( azureClientSecretKey != null ) {
+      azureClientSecretKey.setValue( meta.getAttributes().getProperty( CLIENT_SECRET_KEY ) );
     }
 
     if ( jdbcAuthMethod != null ) {

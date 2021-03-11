@@ -1819,7 +1819,7 @@ public class ValueMetaBase implements ValueMetaInterface {
         case TYPE_NUMBER:
           switch ( storageType ) {
             case STORAGE_TYPE_NORMAL:
-              string = convertNumberToString(((Number) object).doubleValue() );
+              string = convertNumberToString( ( (Number) object ).doubleValue() );
               break;
             case STORAGE_TYPE_BINARY_STRING:
               string = convertNumberToString( (Double) convertBinaryStringToNativeType( (byte[]) object ) );
@@ -1886,10 +1886,10 @@ public class ValueMetaBase implements ValueMetaInterface {
         case TYPE_BINARY:
           switch ( storageType ) {
             case STORAGE_TYPE_NORMAL:
-              if (object instanceof java.lang.String) {
+              if ( object instanceof java.lang.String ) {
                 string = (String) object;
               } else {
-                string = convertBinaryStringToString((byte[]) object);
+                string = convertBinaryStringToString( (byte[]) object );
               }
               break;
             case STORAGE_TYPE_BINARY_STRING:
