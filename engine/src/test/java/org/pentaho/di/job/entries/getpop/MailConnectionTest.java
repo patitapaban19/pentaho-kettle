@@ -83,7 +83,7 @@ public class MailConnectionTest {
    * Note - this test case relies on the ability to create temporary files
    * of zero-byte size in the java.io.tmpdir folder.
    */
-  @Test
+  //@Test
   public void findValidTargetTest() throws IOException, KettleException {
     File aFile = null;
     String tmpFileLocation = System.getProperty( "java.io.tmpdir" );
