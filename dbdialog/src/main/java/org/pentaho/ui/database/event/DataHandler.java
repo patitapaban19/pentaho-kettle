@@ -277,10 +277,10 @@ public class DataHandler extends AbstractXulEventHandler {
   protected XulMenuList namedClusterList;
 
   //Azure SQL DB Variables
-  private XulMenuList azureSqlJdbcAuthMethod;
-  private XulCheckbox azureAlwaysEncryptionEnabled;
-  private XulTextbox azureClientSecretId;
-  private XulTextbox azureClientSecretKey;
+  private XulMenuList azureSqlDBJdbcAuthMethod;
+  private XulCheckbox azureSqlDBAlwaysEncryptionEnabled;
+  private XulTextbox azureSqlDBClientSecretId;
+  private XulTextbox azureSqlDBClientSecretKey;
 
   public DataHandler() {
     databaseDialects = new ArrayList<String>();
@@ -969,11 +969,11 @@ public class DataHandler extends AbstractXulEventHandler {
     setDeckChildIndex();
     onPoolingCheck();
     onClusterCheck();
-    onAlwaysEncryption();
+    enableAzureSqlDBEncryption();
   }
 
-  public void setAzureAuthRelatedFieldsVisible() {
-    if ( azureSqlJdbcAuthMethod != null && "Azure Active Directory - Universal With MFA".equals( azureSqlJdbcAuthMethod.getValue() ) ) {
+  public void setAzureSqlDBAuthRelatedFieldsVisible() {
+    if ( azureSqlDBJdbcAuthMethod != null && "Azure Active Directory - Universal With MFA".equals( azureSqlDBJdbcAuthMethod.getValue() ) ) {
       passwordBox.setDisabled( true );
     } else {
       passwordBox.setDisabled( false );
@@ -981,15 +981,15 @@ public class DataHandler extends AbstractXulEventHandler {
 
   }
 
-  public void onAlwaysEncryption() {
-    if ( azureAlwaysEncryptionEnabled != null ) {
-      boolean isAlwaysEncryptionEnabled = azureAlwaysEncryptionEnabled.isChecked();
+  public void enableAzureSqlDBEncryption() {
+    if ( azureSqlDBAlwaysEncryptionEnabled != null ) {
+      boolean isAlwaysEncryptionEnabled = azureSqlDBAlwaysEncryptionEnabled.isChecked();
       if ( isAlwaysEncryptionEnabled == false ) {
-        azureClientSecretId.setDisabled( true );
-        azureClientSecretKey.setDisabled( true );
+        azureSqlDBClientSecretId.setDisabled( true );
+        azureSqlDBClientSecretKey.setDisabled( true );
       } else {
-        azureClientSecretId.setDisabled( false );
-        azureClientSecretKey.setDisabled( false );
+        azureSqlDBClientSecretId.setDisabled( false );
+        azureSqlDBClientSecretKey.setDisabled( false );
       }
     }
 
@@ -1409,23 +1409,23 @@ public class DataHandler extends AbstractXulEventHandler {
         useIntegratedSecurity != null ? useIntegratedSecurity.toString() : "false" );
     }
     //Azure SQL DB
-    if ( azureSqlJdbcAuthMethod != null ) {
-      meta.getAttributes().put( JDBC_AUTH_METHOD, azureSqlJdbcAuthMethod.getValue() );
+    if ( azureSqlDBJdbcAuthMethod != null ) {
+      meta.getAttributes().put( JDBC_AUTH_METHOD, azureSqlDBJdbcAuthMethod.getValue() );
     }
 
-    if ( azureClientSecretId != null ) {
-      meta.getAttributes().put( CLIENT_ID, azureClientSecretId.getValue() );
+    if ( azureSqlDBClientSecretId != null ) {
+      meta.getAttributes().put( CLIENT_ID, azureSqlDBClientSecretId.getValue() );
     }
-    if ( azureAlwaysEncryptionEnabled != null ) {
-      if ( azureAlwaysEncryptionEnabled.isChecked() ) {
+    if ( azureSqlDBAlwaysEncryptionEnabled != null ) {
+      if ( azureSqlDBAlwaysEncryptionEnabled.isChecked() ) {
         meta.getAttributes().put( IS_ALWAYS_ENCRYPTION_ENABLED, "true" );
       } else {
         meta.getAttributes().put( IS_ALWAYS_ENCRYPTION_ENABLED, "false" );
       }
     }
 
-    if( azureClientSecretKey != null ) {
-      meta.getAttributes().put( CLIENT_SECRET_KEY, azureClientSecretKey.getValue() );
+    if( azureSqlDBClientSecretKey != null ) {
+      meta.getAttributes().put( CLIENT_SECRET_KEY, azureSqlDBClientSecretKey.getValue() );
     }
 
     if ( jdbcAuthMethod != null ) {
@@ -1578,27 +1578,27 @@ public class DataHandler extends AbstractXulEventHandler {
       }
     }
 
-    if ( azureSqlJdbcAuthMethod != null ) {
-      azureSqlJdbcAuthMethod.setValue( meta.getAttributes().getProperty( JDBC_AUTH_METHOD, SQL_AUTHENTICATION ) );
+    if ( azureSqlDBJdbcAuthMethod != null ) {
+      azureSqlDBJdbcAuthMethod.setValue( meta.getAttributes().getProperty( JDBC_AUTH_METHOD, SQL_AUTHENTICATION ) );
       //setAuthFieldsVisible();
     }
 
-    if ( azureAlwaysEncryptionEnabled != null ) {
+    if ( azureSqlDBAlwaysEncryptionEnabled != null ) {
       if ( meta.getAttributes().getProperty( IS_ALWAYS_ENCRYPTION_ENABLED ) != null ) {
         if( meta.getAttributes().getProperty( IS_ALWAYS_ENCRYPTION_ENABLED ).equals( "true" ) ) {
-          azureAlwaysEncryptionEnabled.setChecked( true );
+          azureSqlDBAlwaysEncryptionEnabled.setChecked( true );
         } else {
-          azureAlwaysEncryptionEnabled.setChecked( false );
+          azureSqlDBAlwaysEncryptionEnabled.setChecked( false );
         }
       }
     }
 
-    if ( azureClientSecretId != null ) {
-      azureClientSecretId.setValue( meta.getAttributes().getProperty( CLIENT_ID ) );
+    if ( azureSqlDBClientSecretId != null ) {
+      azureSqlDBClientSecretId.setValue( meta.getAttributes().getProperty( CLIENT_ID ) );
     }
 
-    if( azureClientSecretKey != null ) {
-      azureClientSecretKey.setValue( meta.getAttributes().getProperty( CLIENT_SECRET_KEY ) );
+    if( azureSqlDBClientSecretKey != null ) {
+      azureSqlDBClientSecretKey.setValue( meta.getAttributes().getProperty( CLIENT_SECRET_KEY ) );
     }
 
     if ( jdbcAuthMethod != null ) {
@@ -1691,10 +1691,10 @@ public class DataHandler extends AbstractXulEventHandler {
     iamProfileName = (XulTextbox) document.getElementById( "iam-profile-name" );
     namedClusterList = (XulMenuList) document.getElementById( "named-cluster-list" );
     //azure SQL DB
-    azureSqlJdbcAuthMethod = (XulMenuList) document.getElementById( "azuresql-auth-method-list" );
-    azureAlwaysEncryptionEnabled = (XulCheckbox) document.getElementById( "always-encryption-enable" );
-    azureClientSecretId = (XulTextbox) document.getElementById( "client-id-text" );
-    azureClientSecretKey = (XulTextbox) document.getElementById( "client-secret-key-text" );
+    azureSqlDBJdbcAuthMethod = (XulMenuList) document.getElementById( "azure-sql-db-auth-method-list" );
+    azureSqlDBAlwaysEncryptionEnabled = (XulCheckbox) document.getElementById( "azure-sql-db-enable-always-encryption-on" );
+    azureSqlDBClientSecretId = (XulTextbox) document.getElementById( "azure-sql-db-client-id");
+    azureSqlDBClientSecretKey = (XulTextbox) document.getElementById( "azure-sql-db-client-secret-key" );
 
     if ( portNumberBox != null && serverInstanceBox != null ) {
       if ( Boolean.parseBoolean( serverInstanceBox.getAttributeValue( "shouldDisablePortIfPopulated" ) ) ) {

@@ -1819,7 +1819,7 @@ public class ValueMetaBase implements ValueMetaInterface {
         case TYPE_NUMBER:
           switch ( storageType ) {
             case STORAGE_TYPE_NORMAL:
-              string = convertNumberToString( ( (Number) object ).doubleValue() );
+              string = convertNumberToString( ( (Double) object ) );
               break;
             case STORAGE_TYPE_BINARY_STRING:
               string = convertNumberToString( (Double) convertBinaryStringToNativeType( (byte[]) object ) );

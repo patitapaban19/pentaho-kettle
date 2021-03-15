@@ -2,7 +2,7 @@
  *
  * Pentaho Data Integration
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
  *
  *******************************************************************************
  *
@@ -57,7 +57,7 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
     if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_ODBC ) {
       return "jdbc:odbc:" + databaseName;
     } else {
-      String url = "jdbc:sqlserver://" + hostname + ":1433;database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;";
+      String url = "jdbc:sqlserver://" + hostname + ":" + port + ";database=" + databaseName + ";encrypt=true;trustServerCertificate=false;hostNameInCertificate=*.database.windows.net;loginTimeout=30;";
 
       if ( getAttribute( IS_ALWAYS_ENCRYPTION_ENABLED, "" ).equals( "true" ) ) {
         url += "columnEncryptionSetting=Enabled;keyVaultProviderClientId=" + getAttribute( CLIENT_ID, "" ) + ";keyVaultProviderClientKey=" + getAttribute( CLIENT_SECRET_KEY, "" ) + ";";
@@ -108,6 +108,6 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
 
   @Override
   public String getXulOverlayFile() {
-    return "azuresql";
+    return "azuresqldb";
   }
 }
