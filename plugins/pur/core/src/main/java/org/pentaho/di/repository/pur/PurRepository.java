@@ -333,8 +333,8 @@ public class PurRepository extends AbstractRepository implements Repository, Rec
       this.jobDelegate = new JobDelegate( this, pur );
     } finally {
       if ( connected ) {
-        if ( log.isBasic() ) {
-          log.logBasic( BaseMessages.getString( PKG, "PurRepositoryMetastore.Create.Message" ) );
+        if ( log.isDetailed() ) {
+          log.logDetailed( BaseMessages.getString( PKG, "PurRepositoryMetastore.Create.Message" ) );
         }
         metaStore = new PurRepositoryMetaStore( this );
         IMetaStore activeMetaStore = metaStore;
@@ -346,8 +346,8 @@ public class PurRepository extends AbstractRepository implements Repository, Rec
         // Create the default Pentaho namespace if it does not exist
         try {
           metaStore.createNamespace( PentahoDefaults.NAMESPACE );
-          if ( log.isBasic() ) {
-            log.logBasic( BaseMessages
+          if ( log.isDetailed() ) {
+            log.logDetailed( BaseMessages
               .getString( PKG, "PurRepositoryMetastore.NamespaceCreateSuccess.Message", PentahoDefaults.NAMESPACE ) );
           }
         } catch ( MetaStoreNamespaceExistsException e ) {
@@ -360,8 +360,8 @@ public class PurRepository extends AbstractRepository implements Repository, Rec
             e );
         }
 
-        if ( log.isBasic() ) {
-          log.logBasic( BaseMessages.getString( PKG, "PurRepository.ConnectSuccess.Message" ) );
+        if ( log.isDetailed() ) {
+          log.logDetailed( BaseMessages.getString( PKG, "PurRepository.ConnectSuccess.Message" ) );
         }
       }
     }
@@ -979,8 +979,15 @@ public class PurRepository extends AbstractRepository implements Repository, Rec
         if ( path == null ) {
           return null;
         } else {
-          return path + ( path.endsWith( RepositoryFile.SEPARATOR ) ? "" : RepositoryFile.SEPARATOR ) + sanitizedName
-              + ( sanitizedName.endsWith( objectType.getExtension() ) ? "" : objectType.getExtension() );
+          String processedPath = path + ( path.endsWith( RepositoryFile.SEPARATOR ) ? "" : RepositoryFile.SEPARATOR ) + sanitizedName;
+
+          if ( System.getProperty( Const.KETTLE_COMPATIBILITY_INVOKE_FILES_WITH_OR_WITHOUT_FILE_EXTENSION, "Y" ).equals( "Y" ) ) {
+            processedPath = processedPath + ( sanitizedName.endsWith( objectType.getExtension() ) ? "" : objectType.getExtension() );
+          } else {
+            processedPath = processedPath + objectType.getExtension();
+          }
+
+          return processedPath;
         }
       }
       default: {
