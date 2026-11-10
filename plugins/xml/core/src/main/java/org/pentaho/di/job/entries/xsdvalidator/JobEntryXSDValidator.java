@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.job.entries.xsdvalidator;
 
@@ -32,6 +24,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.List;
 
+import javax.xml.XMLConstants;
 import javax.xml.transform.Source;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
@@ -174,12 +167,15 @@ public class JobEntryXSDValidator extends JobEntryBase implements Cloneable, Job
     try {
 
       if ( xmlfilename != null && xsdfilename != null ) {
-        xmlfile = KettleVFS.getFileObject( realxmlfilename, this );
-        xsdfile = KettleVFS.getFileObject( realxsdfilename, this );
+        xmlfile = KettleVFS.getInstance( parentJobMeta.getBowl() ).getFileObject( realxmlfilename, this );
+        xsdfile = KettleVFS.getInstance( parentJobMeta.getBowl() ).getFileObject( realxsdfilename, this );
 
         if ( xmlfile.exists() && xsdfile.exists() ) {
 
           SchemaFactory factorytXSDValidator_1 = SchemaFactory.newInstance( "http://www.w3.org/2001/XMLSchema" );
+          factorytXSDValidator_1.setFeature(
+            XMLConstants.FEATURE_SECURE_PROCESSING, true);
+          factorytXSDValidator_1.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
 
           // Get XSD File
           File XSDFile = new File( KettleVFS.getFilename( xsdfile ) );
@@ -306,8 +302,8 @@ public class JobEntryXSDValidator extends JobEntryBase implements Cloneable, Job
     ValidatorContext ctx = new ValidatorContext();
     putVariableSpace( ctx, getVariables() );
     putValidators( ctx, notBlankValidator(), fileExistsValidator() );
-    andValidator().validate( this, "xsdFilename", remarks, ctx );
-    andValidator().validate( this, "xmlFilename", remarks, ctx );
+    andValidator().validate( jobMeta.getBowl(), this, "xsdFilename", remarks, ctx );
+    andValidator().validate( jobMeta.getBowl(), this, "xmlFilename", remarks, ctx );
   }
 
 }

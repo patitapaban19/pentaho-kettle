@@ -1,65 +1,55 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.www;
 
 import org.junit.Before;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.owasp.encoder.Encode;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.Job;
 import org.pentaho.di.job.JobMeta;
 import org.pentaho.di.job.entries.empty.JobEntryEmpty;
 import org.pentaho.di.job.entry.JobEntryCopy;
-import org.powermock.modules.junit4.PowerMockRunner;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.WriteListener;
+import jakarta.servlet.ServletOutputStream;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.pentaho.di.core.util.Assert.assertTrue;
 
-@RunWith( PowerMockRunner.class )
 public class GetJobImageServletTest {
-  private static Class<?> PKG = GetTransStatusServlet.class; // for i18n purposes, needed by Translator2!!
+  private static final Class<?> PKG = GetTransStatusServlet.class; // for i18n purposes, needed by Translator2!!
 
   private HttpServletRequest mockHttpServletRequest;
   private HttpServletResponse spyHttpServletResponse;
   private JobMap jobMap;
   private GetJobImageServlet spyGetJobImageServlet;
 
-  private static String JOB_ID = "123";
-  private static String JOB_NAME = "test";
-  private static String USE_XML = "Y";
+  private static final String JOB_ID = "123";
+  private static final String JOB_NAME = "test";
+  private static final String USE_XML = "Y";
 
   @Before
   public void setup() {
@@ -232,7 +222,17 @@ public class GetJobImageServletTest {
 
   private void mockOutputStream() throws IOException {
     doReturn( new ServletOutputStream() {
-      private ByteArrayOutputStream baos = new ByteArrayOutputStream();
+      @Override
+      public boolean isReady() {
+        return false;
+      }
+
+      @Override
+      public void setWriteListener( WriteListener writeListener ) {
+
+      }
+
+      private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
 
       @Override public void write( int b ) {
         baos.write( b );

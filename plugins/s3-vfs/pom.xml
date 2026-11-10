@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ******************************************************************************
+ *
+ * Pentaho
+ *
+ * Copyright (C) 2026 by Pentaho Canada Inc. : http://www.pentaho.com
+ *
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
+ *
+ * Change Date: 2030-06-15
+ ******************************************************************************* -->
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.pentaho.di.plugins</groupId>
+    <artifactId>pdi-plugins</artifactId>
+    <version>11.1.0.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>s3-vfs</artifactId>
+  <version>11.1.0.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <pdi.version>11.1.0.0-SNAPSHOT</pdi.version>
+    <pentaho-hadoop-shims.version>11.1.0.0-SNAPSHOT</pentaho-hadoop-shims.version>
+    <aws-sdk-v2.version>2.54.1</aws-sdk-v2.version>
+    <!-- the version S3Mock is built against, so the unit and integration suites stay interchangeable -->
+    <junit-jupiter.version>6.0.3</junit-jupiter.version>
+  </properties>
+
+  <name>PDI S3-VFS Plugin</name>
+  <description>This plugin is for Pentaho Data Integration (ETL) a.k.a Kettle</description>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Not managed by the PDI parent, so the version lives here for the whole plugin. -->
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${aws-sdk-v2.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <!-- Also unmanaged by the PDI parent, which knows nothing past JUnit 4. -->
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-api</artifactId>
+        <version>${junit-jupiter.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-engine</artifactId>
+        <version>${junit-jupiter.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>core</module>
+    <module>s3-file-output</module>
+    <module>assemblies</module>
+  </modules>
+</project>

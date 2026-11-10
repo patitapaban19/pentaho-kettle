@@ -1,40 +1,34 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.ui.core.events.dialog;
 
 import org.apache.commons.io.FilenameUtils;
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.vfs2.FileObject;
-import org.apache.commons.vfs2.provider.local.LocalFile;
 import org.apache.commons.vfs2.FileSystemException;
+import org.apache.commons.vfs2.provider.local.LocalFile;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.pentaho.di.base.AbstractMeta;
+import org.pentaho.di.connections.vfs.provider.ConnectionFileProvider;
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.extension.KettleExtensionPoint;
 import org.pentaho.di.core.logging.LogChannelInterface;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.repository.RepositoryElementMetaInterface;
 import org.pentaho.di.ui.core.FileDialogOperation;
@@ -58,8 +52,9 @@ import java.util.stream.Collectors;
  *
  *  Dialog.java
  *
- * wbFilename.addSelectionListener(  new SelectionAdapterFileDialogTextVar( log, wFilename, transMeta, new SelectionAdapterOptions(
- * SelectionOperation.FILE, new FilterType[] { FilterType.TXT, FilterType.CSV, FilterType.ALL }, FilterType.TXT ) ) );
+ * wbFilename.addSelectionListener(  new SelectionAdapterFileDialogTextVar( log, wFilename, transMeta, new
+ * SelectionAdapterOptions( meta.getBowl(), SelectionOperation.FILE, new FilterType[] { FilterType.TXT, FilterType.CSV,
+ * FilterType.ALL }, FilterType.TXT ) ) );
  *
  *
  * Side effect:
@@ -128,7 +123,7 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
    * Getter for SelectionAdapterOptions
    * @return
    */
-  SelectionAdapterOptions getSelectionOptions( ) {
+  public SelectionAdapterOptions getSelectionOptions() {
     return options;
   }
 
@@ -144,7 +139,7 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
       try {
         // Attempt to set up initial conditions, if fails browse will fallback to default path.
         initialFilePath = resolveFile( meta, getText() );
-        initialFile = KettleVFS.getFileObject( initialFilePath );
+        initialFile = KettleVFS.getInstance( options.getBowl() ).getFileObject( initialFilePath );
 
         // In cases where filePath is empty set it to the default path returned by kettleVFS.
         if ( Utils.isEmpty( initialFilePath ) && initialFile != null ) {
@@ -156,8 +151,9 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
       }
 
       try {
-        fileDialogOperation = constructFileDialogOperation( options.getSelectionOperation(), initialFilePath,
-          initialFile, options.getFilters(), options.getProviderFilters(), options.getConnectionFilters() );
+        fileDialogOperation = constructFileDialogOperation( options.getBowl(), options.getSelectionOperation(),
+          initialFilePath, initialFile, options.getFilters(), options.getProviderFilters(),
+          options.getConnectionFilters() );
 
         // open dialog
         extensionPointWrapper.callExtensionPoint( log, KettleExtensionPoint.SpoonOpenSaveNew.id, fileDialogOperation );
@@ -175,13 +171,14 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
     }
   }
 
-  private FileDialogOperation constructFileDialogOperation( SelectionOperation selectionOperation, String initialFilePath,
-                                                              FileObject initialFile, String[] filter,
-                                                              String[] providerFilters, List<ConnectionFilterType> connectionFilterTypes ) {
-    FileDialogOperation fileDialogOperation = createFileDialogOperation( selectionOperation );
+  private FileDialogOperation constructFileDialogOperation( Bowl bowl, SelectionOperation selectionOperation,
+                                                            String initialFilePath, FileObject initialFile,
+                                                            String[] filter, String[] providerFilters,
+                                                            List<ConnectionFilterType> connectionFilterTypes ) {
+    FileDialogOperation fileDialogOperation = createFileDialogOperation( bowl, selectionOperation );
 
     setProviderFilters( fileDialogOperation, providerFilters );
-    setProvider( fileDialogOperation );
+    setProvider( fileDialogOperation, initialFile );
 
     String connectionFilter = connectionFilterTypes.stream()
       .map( Enum::toString ).collect( Collectors.joining( "," ) );
@@ -216,23 +213,23 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
     return abstractMeta.environmentSubstitute( unresolvedPath );
   }
 
-  FileDialogOperation createFileDialogOperation( SelectionOperation selectionOperation ) {
+  FileDialogOperation createFileDialogOperation( Bowl bowl, SelectionOperation selectionOperation ) {
 
     switch ( selectionOperation ) {
       case FILE:
-        return new FileDialogOperation( FileDialogOperation.SELECT_FILE, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SELECT_FILE, FileDialogOperation.ORIGIN_SPOON );
       case FOLDER:
-        return new FileDialogOperation( FileDialogOperation.SELECT_FOLDER, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SELECT_FOLDER, FileDialogOperation.ORIGIN_SPOON );
       case FILE_OR_FOLDER:
-        return new FileDialogOperation( FileDialogOperation.SELECT_FILE_FOLDER, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SELECT_FILE_FOLDER, FileDialogOperation.ORIGIN_SPOON );
       case SAVE:
-        return new FileDialogOperation( FileDialogOperation.SAVE, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SAVE, FileDialogOperation.ORIGIN_SPOON );
       case SAVE_TO:
-        return new FileDialogOperation( FileDialogOperation.SAVE_TO, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SAVE_TO, FileDialogOperation.ORIGIN_SPOON );
       case SAVE_TO_FILE_FOLDER:
-        return new FileDialogOperation( FileDialogOperation.SAVE_TO_FILE_FOLDER, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.SAVE_TO_FILE_FOLDER, FileDialogOperation.ORIGIN_SPOON );
       case OPEN:
-        return new FileDialogOperation( FileDialogOperation.OPEN, FileDialogOperation.ORIGIN_SPOON );
+        return new FileDialogOperation( bowl, FileDialogOperation.OPEN, FileDialogOperation.ORIGIN_SPOON );
       default:
         throw new IllegalArgumentException( "Unexpected SelectionOperation: " + selectionOperation );
     }
@@ -263,15 +260,36 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
     }
   }
 
-  void setProvider( FileDialogOperation fileDialogOperation ) {
-    if ( ( fileDialogOperation.getProviderFilter() == null
-         || fileDialogOperation.getProviderFilter().contains( ProviderFilterType.REPOSITORY.toString() )
-         || fileDialogOperation.getProviderFilter().contains( ProviderFilterType.ALL_PROVIDERS.toString() ) )
-         && isConnectedToRepository() ) {
-      fileDialogOperation.setProvider( ProviderFilterType.REPOSITORY.toString() );
-    } else {
-      fileDialogOperation.setProvider( "" );
+  void setProvider( FileDialogOperation op, FileObject initalFile ) {
+    if ( op.getProviderFilter() == null ) {
+      if ( isConnectedToRepository() ) {
+        op.setProvider( ProviderFilterType.REPOSITORY.toString() );
+      } else if ( isConnectionFile( initalFile ) ) {
+        op.setProvider( ProviderFilterType.VFS.toString() );
+      } else if ( "hc".equalsIgnoreCase( initalFile.getURI().getScheme() ) ) {
+        op.setProvider( ProviderFilterType.CLUSTERS.toString() );
+      } else {
+        op.setProvider( ProviderFilterType.LOCAL.toString() );
+      }
+    } else if ( op.getProviderFilter().equalsIgnoreCase( ProviderFilterType.DEFAULT.toString() ) ) {
+      if ( isConnectionFile( initalFile ) ) {
+        op.setProvider( ProviderFilterType.VFS.toString() );
+      } else if ( "hc".equalsIgnoreCase( initalFile.getURI().getScheme() ) ) {
+        op.setProvider( ProviderFilterType.CLUSTERS.toString() );
+      } else {
+        op.setProvider( ProviderFilterType.LOCAL.toString() );
+      }
     }
+  }
+
+  /**
+   * Determines if a <code>fileObject</code> is of type {@value ConnectionFileProvider#SCHEME}
+   * @param fileObject
+   * @return if connection file type, false otherwise.
+   */
+  protected boolean isConnectionFile( FileObject fileObject ) {
+    return fileObject != null && fileObject.getURI() != null
+        && ConnectionFileProvider.SCHEME.equalsIgnoreCase( fileObject.getURI().getScheme() );
   }
 
   /**
@@ -360,7 +378,9 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
 
       // Based on the working environment determine the parent path to compare too.
       if ( isConnectedToRepository() ) {
-        return replaceCurrentDir( path.replace( '\\', '/' ), meta.getRepositoryDirectory().getPath() );
+        String parentPath =
+          meta.getRepositoryDirectory().getParent() == null ? "" : meta.getRepositoryDirectory().getPath();
+        return replaceCurrentDir( path.replace( '\\', '/' ), parentPath );
       }
 
       // Attempt to match using current file as is
@@ -375,7 +395,8 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
       // If no match, attempt to compare to kettleVFS object
       if ( Utils.isEmpty( parentFolder ) ) {
         try {
-          FileObject parentFileObj = KettleVFS.getFileObject( currentFile ).getParent();
+          FileObject parentFileObj = KettleVFS.getInstance( options.getBowl() )
+            .getFileObject( currentFile ).getParent();
 
           // Non-local files should include the schema i.e. pvfs://
           parentFolder = ( parentFileObj instanceof LocalFile ) ? parentFileObj.getName().getPath()
@@ -390,16 +411,19 @@ public abstract class SelectionAdapterFileDialog<T> extends SelectionAdapter {
   }
 
   private static String replaceCurrentDir( String path, String parentPath ) {
-    if ( !Utils.isEmpty( path ) && !Utils.isEmpty( parentPath ) && path.startsWith( parentPath ) ) {
-      path = path.replace( parentPath, "${" + Const.INTERNAL_VARIABLE_ENTRY_CURRENT_DIRECTORY + "}" );
-
-      // Ensure the path is uniform for windows. Path's using the internal variable need to use forward slash
-      if ( Const.isWindows() ) {
-        path = path.replace( '\\', '/' );
-      }
-
+    // Ensure the path is uniform for windows. Path's using the internal variable need to use forward slash
+    if ( Const.isWindows() && !Utils.isEmpty( path ) ) {
+      path = path.replace( '\\', '/' );
+      if ( parentPath != null ) {
+        parentPath = parentPath.replace( '\\', '/' );
+      } 
     }
-    return path;
+
+    if ( Utils.isEmpty( path ) || Utils.isEmpty( parentPath ) || !path.startsWith( parentPath ) ) {
+      return path;
+    }
+
+    return path.replace( parentPath, "${" + Const.INTERNAL_VARIABLE_ENTRY_CURRENT_DIRECTORY + "}" );
   }
 
   String getRepositoryFilePath( FileDialogOperation fileDialogOperation ) {

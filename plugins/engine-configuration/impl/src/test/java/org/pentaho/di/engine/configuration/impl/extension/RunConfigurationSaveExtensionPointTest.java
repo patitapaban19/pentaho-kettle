@@ -1,26 +1,16 @@
-/*
- * *****************************************************************************
+/*! ******************************************************************************
  *
- *  Pentaho Data Integration
+ * Pentaho
  *
- *  Copyright (C) 2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *  *******************************************************************************
- *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use
- *  this file except in compliance with the License. You may obtain a copy of the
- *  License at
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- * *****************************************************************************
- *
- */
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
 
 package org.pentaho.di.engine.configuration.impl.extension;
 
@@ -28,7 +18,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.pentaho.di.core.attributes.metastore.EmbeddedMetaStore;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.engine.configuration.api.RunConfiguration;
@@ -43,13 +33,14 @@ import org.pentaho.di.job.entry.JobEntryRunConfigurableInterface;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@RunWith( MockitoJUnitRunner.class )
+@RunWith( MockitoJUnitRunner.StrictStubs.class )
 public class RunConfigurationSaveExtensionPointTest {
 
   private static final int JOB_ENTRY_COUNT = 10;
@@ -67,8 +58,8 @@ public class RunConfigurationSaveExtensionPointTest {
     for ( int i = 0; i < JOB_ENTRY_COUNT; i++ ) {
       String configurationName = RUN_CONFIGURATION + i;
       RunConfiguration runConfiguration = mock( RunConfiguration.class );
-      when( runConfiguration.getName() ).thenReturn( configurationName );
-      when( runConfigurationManager.load( configurationName ) ).thenReturn( runConfiguration );
+      lenient().when( runConfiguration.getName() ).thenReturn( configurationName );
+      lenient().when( runConfigurationManager.load( configurationName ) ).thenReturn( runConfiguration );
     }
   }
 
@@ -84,7 +75,8 @@ public class RunConfigurationSaveExtensionPointTest {
     when( jobMeta.getJobCopies() ).thenReturn( jobEntryCopies );
 
     RunConfigurationSaveExtensionPoint runConfigurationSaveExtensionPoint =
-      new RunConfigurationSaveExtensionPoint( runConfigurationManager );
+      new RunConfigurationSaveExtensionPoint();
+    runConfigurationSaveExtensionPoint.setRunConfigurationManager( runConfigurationManager );
     runConfigurationSaveExtensionPoint.callExtensionPoint( log, new Object[] { jobMeta } );
 
     for ( int i = 0; i < JOB_ENTRY_COUNT; i++ ) {
@@ -104,7 +96,8 @@ public class RunConfigurationSaveExtensionPointTest {
     when( jobMeta.getJobCopies() ).thenReturn( jobEntryCopies );
 
     RunConfigurationSaveExtensionPoint runConfigurationSaveExtensionPoint =
-      new RunConfigurationSaveExtensionPoint( runConfigurationManager );
+      new RunConfigurationSaveExtensionPoint();
+    runConfigurationSaveExtensionPoint.setRunConfigurationManager( runConfigurationManager );
     runConfigurationSaveExtensionPoint.callExtensionPoint( log, new Object[] { jobMeta } );
 
     verify( runConfigurationManager, times( 1 ) ).load( anyString() );
@@ -120,7 +113,8 @@ public class RunConfigurationSaveExtensionPointTest {
     when( jobMeta.getJobCopies() ).thenReturn( jobEntryCopies );
 
     RunConfigurationSaveExtensionPoint runConfigurationSaveExtensionPoint =
-      new RunConfigurationSaveExtensionPoint( runConfigurationManager );
+      new RunConfigurationSaveExtensionPoint();
+    runConfigurationSaveExtensionPoint.setRunConfigurationManager( runConfigurationManager );
     runConfigurationSaveExtensionPoint.callExtensionPoint( log, new Object[] { jobMeta } );
 
     verify( runConfigurationManager ).load();
@@ -140,7 +134,8 @@ public class RunConfigurationSaveExtensionPointTest {
     when( jobMeta.getJobCopies() ).thenReturn( jobEntryCopies );
 
     RunConfigurationSaveExtensionPoint runConfigurationSaveExtensionPoint =
-      new RunConfigurationSaveExtensionPoint( runConfigurationManager );
+      new RunConfigurationSaveExtensionPoint();
+    runConfigurationSaveExtensionPoint.setRunConfigurationManager( runConfigurationManager );
     runConfigurationSaveExtensionPoint.callExtensionPoint( log, new Object[] { jobMeta } );
 
     verify( runConfigurationManager ).load();

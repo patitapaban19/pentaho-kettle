@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.step.mqtt;
 
@@ -27,6 +19,7 @@ import org.pentaho.di.core.ObjectLocationSpecificationMethod;
 import org.pentaho.di.core.annotations.Step;
 import org.pentaho.di.core.injection.Injection;
 import org.pentaho.di.core.injection.InjectionSupported;
+import org.pentaho.di.core.plugins.ParentFirst;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
@@ -38,6 +31,7 @@ import org.pentaho.di.repository.Repository;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
+import org.pentaho.di.trans.step.StepHelperInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
@@ -98,7 +92,7 @@ import static org.pentaho.metaverse.api.analyzer.kettle.step.ExternalResourceSte
   name = "MQTTConsumer.TypeLongDesc",
   description = "MQTTConsumer.TypeTooltipDesc",
   categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Streaming",
-  documentationUrl = "Products/MQTT_Consumer" )
+  documentationUrl = "pdi-transformation-steps-reference-overview/mqtt-consumer" )
 @InjectionSupported ( localizationPrefix = "MQTTConsumerMeta.Injection.", groups = { "SSL" } )
 @Metaverse.CategoryMap ( entity = MQTT_TOPIC_METAVERSE, category = CATEGORY_MESSAGE_QUEUE )
 @Metaverse.CategoryMap ( entity = MQTT_SERVER_METAVERSE, category = CATEGORY_DATASOURCE )
@@ -106,6 +100,7 @@ import static org.pentaho.metaverse.api.analyzer.kettle.step.ExternalResourceSte
   NODE_TYPE_EXTERNAL_CONNECTION )
 @Metaverse.EntityLink ( entity = MQTT_TOPIC_METAVERSE, link = LINK_CONTAINS_CONCEPT, parentEntity = MQTT_SERVER_METAVERSE )
 @Metaverse.EntityLink ( entity = MQTT_TOPIC_METAVERSE, link = LINK_PARENT_CONCEPT )
+@ParentFirst( patterns = { ".*" } )
 public class MQTTConsumerMeta extends BaseStreamStepMeta implements StepMetaInterface {
   private static final Class<?> PKG = MQTTConsumerMeta.class;
 
@@ -381,6 +376,11 @@ public class MQTTConsumerMeta extends BaseStreamStepMeta implements StepMetaInte
 
   public void setAutomaticReconnect( String automaticReconnect ) {
     this.automaticReconnect = automaticReconnect;
+  }
+
+  @Override
+  public StepHelperInterface getStepHelperInterface() {
+    return new MQTTConsumerHelper( this );
   }
 
   List<StepOption> retrieveOptions() {

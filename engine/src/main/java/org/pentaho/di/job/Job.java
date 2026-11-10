@@ -1,25 +1,17 @@
 //CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.job;
 
@@ -42,9 +34,15 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.mutable.MutableInt;
 import org.apache.commons.vfs2.FileName;
 import org.apache.commons.vfs2.FileObject;
+import org.pentaho.di.base.IMetaFileCache;
 import org.pentaho.di.cluster.SlaveServer;
+import org.pentaho.di.connections.vfs.provider.ConnectionFileProvider;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.util.ConnectionUtil;
 import org.pentaho.di.core.util.Utils;
@@ -94,6 +92,7 @@ import org.pentaho.di.job.entries.special.JobEntrySpecial;
 import org.pentaho.di.job.entries.trans.JobEntryTrans;
 import org.pentaho.di.job.entry.JobEntryCopy;
 import org.pentaho.di.job.entry.JobEntryInterface;
+import org.pentaho.di.metastore.MetaStoreConst;
 import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.ObjectRevision;
 import org.pentaho.di.repository.Repository;
@@ -101,6 +100,7 @@ import org.pentaho.di.repository.RepositoryDirectoryInterface;
 import org.pentaho.di.resource.ResourceUtil;
 import org.pentaho.di.resource.TopLevelResource;
 import org.pentaho.di.trans.Trans;
+import org.pentaho.di.www.CarteSingleton;
 import org.pentaho.di.www.RegisterJobServlet;
 import org.pentaho.di.www.RegisterPackageServlet;
 import org.pentaho.di.www.SocketRepository;
@@ -129,6 +129,8 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
 
   private LogLevel logLevel = DefaultLogLevel.getLogLevel();
 
+  private int logBufferStartLine;
+
   private String containerObjectId;
 
   private JobMeta jobMeta;
@@ -140,6 +142,8 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
   private AtomicInteger errors;
 
   private VariableSpace variables = new Variables();
+
+  private MutableInt lastNr = new MutableInt( -1 );
 
   /**
    * The job that's launching this (sub-) job. This gives us access to the whole chain, including the parent variables,
@@ -243,6 +247,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
 
     init();
     this.log = new LogChannel( this );
+    this.log.setHooks( this );
   }
 
   public void init() {
@@ -302,6 +307,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
 
     this.log = new LogChannel( this, parentLogging );
     this.logLevel = log.getLogLevel();
+    this.log.setHooks( this );
 
     if ( this.containerObjectId == null ) {
       this.containerObjectId = log.getContainerObjectId();
@@ -312,6 +318,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
     init();
     this.log = new LogChannel( this );
     this.logLevel = log.getLogLevel();
+    this.log.setHooks( this );
   }
 
   /**
@@ -357,6 +364,29 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
   }
 
   /**
+   * Initializes the job's variable space from the appropriate source.
+   * <p>
+   * Priority order: parentJob > jobMeta > default space.
+   * <p>
+   * BISERVER-15478: Using jobMeta preserves variables set before execution (e.g., via shareVariablesWith),
+   * ensuring scheduled jobs retain variables passed by the scheduler. This is consistent with how Trans
+   * inherits from TransMeta.
+   * <p>
+   * Note: The variable space may already be shared with jobMeta via shareVariablesWith().
+   * In that case (variables == jobMeta), initialization is skipped to avoid creating a
+   * self-referential parent chain (jobMeta.parent = jobMeta).
+   */
+  void initializeVariables() {
+    if ( parentJob != null ) {
+      variables.initializeVariablesFrom( parentJob );
+    } else if ( jobMeta != null && variables != jobMeta ) {
+      variables.initializeVariablesFrom( jobMeta );
+    } else if ( jobMeta == null ) {
+      variables.initializeVariablesFrom( getBowl().getADefaultVariableSpace() );
+    }
+  }
+
+  /**
    * Threads main loop: called by Thread.start();
    */
   @Override public void run() {
@@ -368,18 +398,18 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       setFinished( false );
       setInitialized( true );
 
-      // Create a new variable name space as we want jobs to have their own set of variables.
-      // initialize from parentJob or null
-      //
-      variables.initializeVariablesFrom( parentJob );
+      initializeVariables();
       setInternalKettleVariables( variables );
       copyParametersFrom( jobMeta );
       activateParameters();
       ConnectionUtil.init( jobMeta );
 
+      IMetaFileCache.setCacheInstance( jobMeta, IMetaFileCache.initialize( parentJob, log ) );
+
       // Run the job
       //
       fireJobStartListeners();
+
 
       heartbeat = startHeartbeat( getHeartbeatIntervalInSeconds() );
 
@@ -398,12 +428,17 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
 
       emergencyWriteJobTracker( result );
 
-      setActive( false );
-      setFinished( true );
+      markAsFinished();
       setStopped( false );
     } finally {
       try {
         shutdownHeartbeat( heartbeat );
+        if ( jobMeta.getParent() == null ) {
+          if ( log.isDetailed() && jobMeta.getMetaFileCache() != null ) {
+            jobMeta.getMetaFileCache().logCacheSummary( log );
+          }
+          jobMeta.setMetaFileCache( null );
+        }
 
         ExtensionPointHandler.callExtensionPoint( log, KettleExtensionPoint.JobFinish.id, this );
         jobMeta.disposeEmbeddedMetastoreProvider();
@@ -443,6 +478,8 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
    */
   private Result execute() throws KettleException {
     try {
+      setInitialLogBufferStartLine();
+
       log.snap( Metrics.METRIC_JOB_START );
 
       setFinished( false );
@@ -450,7 +487,6 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       KettleEnvironment.setExecutionInformation( this, rep );
 
       log.logMinimal( BaseMessages.getString( PKG, "Job.Comment.JobStarted" ) );
-
       ExtensionPointHandler.callExtensionPoint( log, KettleExtensionPoint.JobStart.id, this );
 
       // Start the tracking...
@@ -519,10 +555,10 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       // Save this result...
       jobTracker.addJobTracker( new JobTracker( jobMeta, jerEnd ) );
       log.logMinimal( BaseMessages.getString( PKG, "Job.Comment.JobFinished" ) );
-
-      setActive( false );
       if ( !isStopped() ) {
-        setFinished( true );
+        markAsFinished();
+      } else {
+        setActive( false );
       }
       return res;
     } finally {
@@ -667,9 +703,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       JobEntryInterface cloneJei = (JobEntryInterface) jobEntryInterface.clone();
       ( (VariableSpace) cloneJei ).copyVariablesFrom( this );
       cloneJei.setRepository( rep );
-      if ( rep != null ) {
-        cloneJei.setMetaStore( rep.getMetaStore() );
-      }
+      cloneJei.setMetaStore( MetaStoreConst.getDefaultMetastore() );
       cloneJei.setParentJob( this );
       cloneJei.setParentJobMeta( this.getJobMeta() );
       final long start = System.currentTimeMillis();
@@ -716,8 +750,15 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       // Also capture the logging text after the execution...
       //
       LoggingBuffer loggingBuffer = KettleLogStore.getAppender();
-      StringBuffer logTextBuffer = loggingBuffer.getBuffer( cloneJei.getLogChannel().getLogChannelId(), false );
-      newResult.setLogText( logTextBuffer.toString() + newResult.getLogText() );
+      StringBuffer logTextBuffer = loggingBuffer.getBuffer( cloneJei.getLogChannel().getLogChannelId(),
+        false, lastNr );
+
+      // User can turn off logging using KETTLE_SKIP_JOB_LOGGING="Y" in kettle.properties
+      // Default is "N"
+      if ( "N".equalsIgnoreCase( System.getProperty( Const.KETTLE_SKIP_JOB_LOGGING,
+              Const.KETTLE_SKIP_JOB_LOGGING_DEFAULT ) ) ) {
+        newResult.appendLogText( logTextBuffer.toString() );
+      }
 
       // Save this result as well...
       //
@@ -1014,7 +1055,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
         if ( !ldb.isAutoCommit() ) {
           ldb.commitLog( true, jobMeta.getJobLogTable() );
         }
-        ldb.disconnect();
+        ldb.close();
 
         // If we need to do periodic logging, make sure to install a timer for
         // this...
@@ -1066,7 +1107,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
         throw new KettleJobException( BaseMessages.getString( PKG, "Job.Log.UnableToProcessLoggingStart", ""
             + tableName ), dbe );
       } finally {
-        ldb.disconnect();
+        ldb.close();
       }
     }
 
@@ -1180,7 +1221,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       if ( !ldb.isAutoCommit() ) {
         ldb.commitLog( true, jobLogTable );
       }
-      ldb.disconnect();
+      ldb.close();
     }
   }
 
@@ -1226,7 +1267,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       if ( !db.isAutoCommit() ) {
         db.commit( true );
       }
-      db.disconnect();
+      db.close();
     }
   }
 
@@ -1257,7 +1298,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       if ( !db.isAutoCommit() ) {
         db.commitLog( true, jobEntryLogTable );
       }
-      db.disconnect();
+      db.close();
     }
   }
 
@@ -1309,6 +1350,10 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
   public void setFinished( boolean finished ) {
     status.updateAndGet( v -> finished ? v | BitMaskStatus.FINISHED.mask : ( BitMaskStatus.BIT_STATUS_SUM
         ^ BitMaskStatus.FINISHED.mask ) & v );
+  }
+
+  void markAsFinished() {
+    status.updateAndGet( v -> ( v | BitMaskStatus.FINISHED.mask ) & ~BitMaskStatus.ACTIVE.mask );
   }
 
   public Date getStartDate() {
@@ -1425,7 +1470,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
     boolean hasFilename = jobMeta != null && !Utils.isEmpty( jobMeta.getFilename() );
     if ( hasFilename ) { // we have a finename that's defined.
       try {
-        FileObject fileObject = KettleVFS.getFileObject( jobMeta.getFilename(), this );
+        FileObject fileObject = KettleVFS.getInstance( getBowl() ).getFileObject( jobMeta.getFilename(), this );
         FileName fileName = fileObject.getName();
 
         // The filename of the transformation
@@ -1453,7 +1498,7 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
         .getRepositoryDirectory().getPath() : "" );
 
     // setup fallbacks
-    if ( hasRepoDir ) {
+    if ( hasRepoDir && !isVfs() ) {
       variables.setVariable( Const.INTERNAL_VARIABLE_JOB_FILENAME_DIRECTORY, variables.getVariable(
           Const.INTERNAL_VARIABLE_JOB_REPOSITORY_DIRECTORY ) );
     } else {
@@ -1473,11 +1518,27 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
 
   }
 
+  private Bowl getBowl() {
+    if ( jobMeta != null ) {
+      return jobMeta.getBowl();
+    }
+    return DefaultBowl.getInstance();
+  }
+
   protected void setInternalEntryCurrentDirectory( boolean hasFilename, boolean hasRepoDir  ) {
     variables.setVariable( Const.INTERNAL_VARIABLE_ENTRY_CURRENT_DIRECTORY, variables.getVariable(
       hasRepoDir ? Const.INTERNAL_VARIABLE_JOB_REPOSITORY_DIRECTORY
         : hasFilename ? Const.INTERNAL_VARIABLE_JOB_FILENAME_DIRECTORY
         : Const.INTERNAL_VARIABLE_ENTRY_CURRENT_DIRECTORY ) );
+  }
+
+  /**
+   * Checks if the job's filename has a VFS reference.
+   *
+   * @return true if it is a VFS reference, false otherwise
+   */
+  public boolean isVfs() {
+    return this.jobMeta != null && StringUtils.startsWith( jobMeta.getFilename(), ConnectionFileProvider.ROOT_URI );
   }
 
   /*
@@ -1679,23 +1740,27 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
       if ( executionConfiguration.isPassingExport() ) {
         // First export the job... slaveServer.getVariable("MASTER_HOST")
         //
-        FileObject tempFile =
-            KettleVFS.createTempFile( "jobExport", ".zip", System.getProperty( "java.io.tmpdir" ), jobMeta );
+        try ( FileObject tempFile = KettleVFS.getInstance( DefaultBowl.getInstance() )
+            .createTempFile( "jobExport", ".zip", System.getProperty( "java.io.tmpdir" ), jobMeta ) ) {
+            // Use tempFile within this block
+        
+          Bowl globalBowl = repository != null ? repository.getBowl() : DefaultBowl.getInstance();
+          TopLevelResource topLevelResource =
+              ResourceUtil.serializeResourceExportInterface( jobMeta.getBowl(), globalBowl, tempFile.getName().toString(),
+                jobMeta, jobMeta, repository, metaStore, executionConfiguration.getXML(),
+                 CONFIGURATION_IN_EXPORT_FILENAME );
 
-        TopLevelResource topLevelResource =
-            ResourceUtil.serializeResourceExportInterface( tempFile.getName().toString(), jobMeta, jobMeta, repository,
-                metaStore, executionConfiguration.getXML(), CONFIGURATION_IN_EXPORT_FILENAME );
-
-        // Send the zip file over to the slave server...
-        String result =
-            slaveServer.sendExport( topLevelResource.getArchiveName(), RegisterPackageServlet.TYPE_JOB, topLevelResource
-                .getBaseResourceName() );
-        WebResult webResult = WebResult.fromXMLString( result );
-        if ( !webResult.getResult().equalsIgnoreCase( WebResult.STRING_OK ) ) {
-          throw new KettleException( "There was an error passing the exported job to the remote server: " + Const.CR
-              + webResult.getMessage() );
+          // Send the zip file over to the slave server...
+          String result =
+              slaveServer.sendExport( topLevelResource.getArchiveName(), RegisterPackageServlet.TYPE_JOB, topLevelResource
+                  .getBaseResourceName() );
+          WebResult webResult = WebResult.fromXMLString( result );
+          if ( !webResult.getResult().equalsIgnoreCase( WebResult.STRING_OK ) ) {
+            throw new KettleException( "There was an error passing the exported job to the remote server: " + Const.CR
+                + webResult.getMessage() );
+          }
+          carteObjectId = webResult.getId();
         }
-        carteObjectId = webResult.getId();
       } else {
         String xml = new JobConfiguration( jobMeta, executionConfiguration ).getXML();
 
@@ -1895,6 +1960,9 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
    * @return the socket repository
    */
   public SocketRepository getSocketRepository() {
+    if ( socketRepository == null ) {
+      return ( socketRepository = CarteSingleton.getInstance().getSocketRepository() );
+    }
     return socketRepository;
   }
 
@@ -2018,6 +2086,32 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
   public void setLogLevel( LogLevel logLevel ) {
     this.logLevel = logLevel;
     log.setLogLevel( logLevel );
+  }
+
+  /**
+   * Gets the logBufferStartLine.
+   *
+   * @return logBufferStartLine
+   */
+  public int getLogBufferStartLine() {
+    return logBufferStartLine;
+  }
+
+  /**
+   * Sets the logBufferStartLine.
+   *
+   * @param lineNr
+   *          the log buffer starting line for this job
+   */
+  public void setLogBufferStartLine( int lineNr ) {
+    logBufferStartLine = lineNr;
+  }
+
+  /**
+   * Sets logBufferStartLine based on LoggingBuffer last line number
+   */
+  public void setInitialLogBufferStartLine() {
+    logBufferStartLine = KettleLogStore.getAppender().getLastBufferLineNr();
   }
 
   /**
@@ -2337,5 +2431,18 @@ public class Job extends Thread implements VariableSpace, NamedParams, HasLogCha
     }
 
     return Const.HEARTBEAT_PERIODIC_INTERVAL_IN_SECS;
+  }
+
+  @Override public void callBeforeLog() {
+    if ( parentLoggingObject != null ) {
+      parentLoggingObject.callBeforeLog();
+    }
+  }
+
+  @Override public void callAfterLog() {
+    if ( parentLoggingObject != null ) {
+      parentLoggingObject.callAfterLog();
+    }
+    this.logDate = new Date();
   }
 }

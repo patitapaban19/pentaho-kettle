@@ -1,26 +1,20 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.connections;
+
+import org.pentaho.di.core.exception.KettleException;
 
 import java.util.List;
 
@@ -34,11 +28,43 @@ public interface ConnectionProvider<T extends ConnectionDetails> {
 
   Class<T> getClassType();
 
-  List<String> getNames();
+  /**
+   * @deprecated use getNames( ConnectionManager )
+   */
+  @Deprecated
+  default List<String> getNames() {
+    throw new UnsupportedOperationException( "Deprecated method" );
+  }
 
-  List<T> getConnectionDetails();
+  /**
+   * @deprecated use getConnectionDetails( ConnectionManager )
+   */
+  @Deprecated
+  default List<T> getConnectionDetails() {
+    throw new UnsupportedOperationException( "Deprecated method" );
+  }
 
-  boolean test( T connectionDetails );
+  // Subclasses should implement this to work with Bowls.
+  default List<String> getNames( ConnectionManager connectionManager ) {
+    return getNames();
+  }
 
-  T prepare( T connectionDetails );
+  // Subclasses should implement this to work with Bowls.
+  default List<T> getConnectionDetails( ConnectionManager connectionManager ) {
+    return getConnectionDetails();
+  }
+
+  boolean test( T connectionDetails ) throws KettleException;
+
+  T prepare( T connectionDetails ) throws KettleException;
+
+
+  /**
+   * If it should be loaded from the metastore by ConnectionManager ({@code true}) or if the provider
+   * has an independent implementation of {@link ConnectionProvider#getConnectionDetails(ConnectionManager)}
+   * ({@code false}, experimental).
+   */
+  default boolean isStorageManaged() {
+    return true;
+  }
 }

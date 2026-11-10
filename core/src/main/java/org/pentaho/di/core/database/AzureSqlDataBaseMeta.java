@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.core.database;
 
 import org.pentaho.di.core.exception.KettleDatabaseException;
@@ -26,6 +18,9 @@ import org.pentaho.di.core.row.ValueMetaInterface;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
+
+import static org.pentaho.di.core.util.Utils.setStringValueFromMap;
 
 /**
  * @author patitapaban19
@@ -41,6 +36,7 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
   public static final String SQL_AUTHENTICATION = "SQL Server Authentication";
   public static final String ACTIVE_DIRECTORY_PASSWORD = "Azure Active Directory - Password";
   public static final String ACTIVE_DIRECTORY_MFA = "Azure Active Directory - Universal With MFA";
+  public static final String ACTIVE_DIRECTORY_INTEGRATED = "Azure Active Directory - Integrated";
 
 
   @Override
@@ -63,6 +59,8 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
       return url + "authentication=ActiveDirectoryPassword;";
     } else if ( ACTIVE_DIRECTORY_MFA.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {
       return url + "authentication=ActiveDirectoryInteractive;";
+    } else if ( ACTIVE_DIRECTORY_INTEGRATED.equals( getAttribute( JDBC_AUTH_METHOD, "" ) ) ) {
+      return url + "Authentication=ActiveDirectoryIntegrated;";
     } else {
       return url;
     }
@@ -102,5 +100,13 @@ public class AzureSqlDataBaseMeta extends MSSQLServerDatabaseMeta {
   @Override
   public String getXulOverlayFile() {
     return "azuresqldb";
+  }
+
+  @Override
+  public void setConnectionSpecificInfoFromAttributes( Map<String, String> attributes ) {
+    addAttribute( JDBC_AUTH_METHOD, setStringValueFromMap( attributes, JDBC_AUTH_METHOD ) );
+    addAttribute( CLIENT_ID, setStringValueFromMap( attributes, CLIENT_ID ) );
+    addAttribute( CLIENT_SECRET_KEY, setStringValueFromMap( attributes, CLIENT_SECRET_KEY ) );
+    addAttribute( IS_ALWAYS_ENCRYPTION_ENABLED, setStringValueFromMap( attributes, IS_ALWAYS_ENCRYPTION_ENABLED ) );
   }
 }

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2018 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.concatfields;
 
@@ -26,6 +18,7 @@ import org.apache.commons.io.IOUtils;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.util.StringUtil;
@@ -51,9 +44,9 @@ import java.util.List;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyObject;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -106,9 +99,8 @@ public class ConcatFieldsMetaTest {
     // 'exportResources' will always return 'null'
     concatFieldsMeta = new ConcatFieldsMeta();
     concatFieldsMeta.setOutputFields( new TextFileField[] {} );
-    assertNull( concatFieldsMeta.exportResources( mock( VariableSpace.class ), new HashMap<>(),
-      mock( ResourceNamingInterface.class ), mock( Repository.class ), mock(
-        IMetaStore.class ) ) );
+    assertNull( concatFieldsMeta.exportResources( mock( Bowl.class ), mock( Bowl.class ), mock( VariableSpace.class ),
+      new HashMap<>(), mock( ResourceNamingInterface.class ), mock( Repository.class ), mock( IMetaStore.class ) ) );
 
 
     // Saving the StepMeta, will always ignore the filename
@@ -124,7 +116,7 @@ public class ConcatFieldsMetaTest {
     StringObjectId id_transformation = new StringObjectId( "id_transformation" );
     StringObjectId id_step = new StringObjectId( "id_step" );
 
-    doNothing().when( rep ).saveStepAttribute( anyObject(), anyObject(), anyInt(), anyString(), anyString() );
+    doNothing().when( rep ).saveStepAttribute( any(), any(), anyInt(), anyString(), anyString() );
     concatFieldsMeta.saveRep( rep, metaStore, id_transformation, id_step );
     verify( rep ).saveStepAttribute( id_transformation, id_step, "fileNameInField", false );
     verify( rep ).saveStepAttribute( id_transformation, id_step, "file_name", StringUtil.EMPTY_STRING );

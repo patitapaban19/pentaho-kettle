@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2018 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.synchronizeaftermerge;
 
@@ -49,11 +41,7 @@ import org.pentaho.di.shared.SharedObjectInterface;
 import org.pentaho.di.trans.DatabaseImpact;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
-import org.pentaho.di.trans.step.BaseStepMeta;
-import org.pentaho.di.trans.step.StepDataInterface;
-import org.pentaho.di.trans.step.StepInterface;
-import org.pentaho.di.trans.step.StepMeta;
-import org.pentaho.di.trans.step.StepMetaInterface;
+import org.pentaho.di.trans.step.*;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
 
@@ -63,7 +51,7 @@ import org.w3c.dom.Node;
  */
 @InjectionSupported( localizationPrefix = "SynchronizeAfterMerge.Injection.", groups = { "KEYS_TO_LOOKUP",
   "UPDATE_FIELDS" } )
-public class SynchronizeAfterMergeMeta extends BaseStepMeta implements StepMetaInterface {
+public class SynchronizeAfterMergeMeta extends BaseDatabaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = SynchronizeAfterMergeMeta.class; // for i18n purposes, needed by Translator2!!
 
   /** what's the lookup schema? */
@@ -74,7 +62,7 @@ public class SynchronizeAfterMergeMeta extends BaseStepMeta implements StepMetaI
   @Injection( name = "TABLE_NAME" )
   private String tableName;
 
-  private List<? extends SharedObjectInterface> databases;
+  private List<DatabaseMeta> databases;
 
   /** database connection */
   private DatabaseMeta databaseMeta;
@@ -418,7 +406,7 @@ public class SynchronizeAfterMergeMeta extends BaseStepMeta implements StepMetaI
     return retval;
   }
 
-  private void readData( Node stepnode, List<? extends SharedObjectInterface> databases ) throws KettleXMLException {
+  private void readData( Node stepnode, List<DatabaseMeta> databases ) throws KettleXMLException {
     try {
       int nrkeys, nrvalues;
       this.databases = databases;
@@ -881,7 +869,7 @@ public class SynchronizeAfterMergeMeta extends BaseStepMeta implements StepMetaI
         cr = new CheckResult( CheckResult.TYPE_RESULT_ERROR, error_message, stepMeta );
         remarks.add( cr );
       } finally {
-        db.disconnect();
+        db.close();
       }
     } else {
       error_message = BaseMessages.getString( PKG, "SynchronizeAfterMergeMeta.CheckResult.InvalidConnection" );
@@ -1067,7 +1055,7 @@ public class SynchronizeAfterMergeMeta extends BaseStepMeta implements StepMetaI
         throw new KettleException( BaseMessages.getString(
           PKG, "SynchronizeAfterMergeMeta.Exception.ErrorGettingFields" ), e );
       } finally {
-        db.disconnect();
+        db.close();
       }
     } else {
       throw new KettleException( BaseMessages.getString(

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.engine.configuration.impl.pentaho.scheduler;
 
@@ -27,14 +19,18 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.HttpClients;
 import org.pentaho.di.base.AbstractMeta;
+import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.logging.LogChannel;
 import org.pentaho.di.core.parameters.UnknownParamException;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.JobMeta;
 import org.pentaho.di.repository.Repository;
+import org.pentaho.di.ui.spoon.session.AuthenticationContext;
+import org.pentaho.di.ui.spoon.session.SpoonSessionManager;
 
-import javax.xml.bind.JAXBContext;
-import javax.xml.bind.JAXBException;
-import javax.xml.bind.Marshaller;
+import jakarta.xml.bind.JAXBContext;
+import jakarta.xml.bind.JAXBException;
+import jakarta.xml.bind.Marshaller;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
@@ -46,7 +42,7 @@ import java.util.Base64;
  */
 public class SchedulerRequest {
 
-  public static final String API_SCHEDULER_JOB = "/api/scheduler/job";
+  public static final String API_SCHEDULER_JOB = "/plugin/scheduler-plugin/api/scheduler/job";
   public static final String CONTENT_TYPE = "Content-Type";
   public static final String APPLICATION_XML = "application/xml";
   public static final String UTF_8 = "UTF-8";
@@ -81,8 +77,23 @@ public class SchedulerRequest {
       String username = repository.getUserInfo().getName();
       String password = repository.getUserInfo().getPassword();
 
-      if ( username != null && password != null ) {
+      boolean isSessionAuth = AuthenticationContext.SESSION_AUTH_TOKEN.equals( password );
 
+      if ( isSessionAuth ) {
+        try {
+          AuthenticationContext authContext =
+            SpoonSessionManager.getInstance().getAuthenticationContext( baseUrl );
+
+          if ( authContext != null ) {
+            String jsessionId = authContext.getJSessionId();
+            if ( jsessionId != null && !jsessionId.trim().isEmpty() ) {
+              httpPost.setHeader( "Cookie", "JSESSIONID=" + jsessionId );
+            }
+          }
+        } catch ( Exception e ) {
+          LogChannel.GENERAL.logError( "Error setting session auth header", e );
+        }
+      } else if ( username != null ) {
         byte[] encoding;
         try {
           String userPass = username + ":" + password;
@@ -136,12 +147,17 @@ public class SchedulerRequest {
   }
 
   StringEntity buildSchedulerRequestEntity( AbstractMeta meta )
-          throws UnsupportedEncodingException, UnknownParamException {
+          throws UnsupportedEncodingException, KettleException {
 
     String filename = getFullPath( meta );
 
     JobScheduleRequest jobScheduleRequest = new JobScheduleRequest();
     jobScheduleRequest.setInputFile( filename );
+
+    // BACKLOG-43739
+    // Set the output file path for the job schedule request.
+    // This specifies the directory where the output file will be saved ( current session user home directory).
+    jobScheduleRequest.setOutputFile( meta.getRepository().getUserHomeDirectory().getPath() );
 
     // Set the log level
     if ( meta.getLogLevel() != null ) {

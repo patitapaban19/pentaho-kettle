@@ -1,36 +1,29 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2018 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.step.jms;
 
 import org.apache.activemq.artemis.junit.EmbeddedJMSResource;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.pentaho.di.core.KettleEnvironment;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.KettleLogStore;
 import org.pentaho.di.core.logging.LogChannelInterface;
@@ -38,6 +31,7 @@ import org.pentaho.di.core.logging.LogChannelInterfaceFactory;
 import org.pentaho.di.core.plugins.StepPluginType;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.util.GenericStepData;
+import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepMeta;
@@ -63,16 +57,18 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-@RunWith ( MockitoJUnitRunner.class )
+@RunWith ( MockitoJUnitRunner.StrictStubs.class )
 public class JmsProducerTest {
+  @ClassRule public static RestorePDIEngineEnvironment env = new RestorePDIEngineEnvironment();
   @Mock LogChannelInterfaceFactory logChannelFactory;
   @Mock LogChannelInterface logChannel;
   @Mock JMSContext jmsContext;
@@ -94,14 +90,13 @@ public class JmsProducerTest {
       JmsProducerMeta.class,
       JmsProducerMeta.class.getAnnotation( org.pentaho.di.core.annotations.Step.class ),
       Collections.emptyList(), false, null );
-    KettleEnvironment.init();
   }
 
   @Before
   public void setUp() throws KettleException {
     KettleLogStore.setLogChannelInterfaceFactory( logChannelFactory );
     when( logChannelFactory.create( any(), any() ) ).thenReturn( logChannel );
-    when( logChannelFactory.create( any() ) ).thenReturn( logChannel );
+    lenient().when( logChannelFactory.create( any() ) ).thenReturn( logChannel );
 
     List<JmsProvider> jmsProviders = new ArrayList<>();
     ActiveMQProvider activeMQProvider = spy( new ActiveMQProvider() );
@@ -135,9 +130,9 @@ public class JmsProducerTest {
     //Mock inputRowMeta into the step
     String[] fieldNames = new String[] { "one", "two" };
     RowMetaInterface inputRowMeta = mock( RowMetaInterface.class );
-    when( inputRowMeta.clone() ).thenReturn( inputRowMeta );
-    when( inputRowMeta.size() ).thenReturn( 2 );
-    when( inputRowMeta.getFieldNames() ).thenReturn( fieldNames );
+    lenient().when( inputRowMeta.clone() ).thenReturn( inputRowMeta );
+    lenient().when( inputRowMeta.size() ).thenReturn( 2 );
+    lenient().when( inputRowMeta.getFieldNames() ).thenReturn( fieldNames );
     when( inputRowMeta.indexOfValue( any() ) ).thenReturn( 0 );
     step.setInputRowMeta( inputRowMeta );
   }
@@ -244,7 +239,8 @@ public class JmsProducerTest {
 
   @Test
   public void jmsContextClosedOnStop() throws Exception {
-    TransMeta transMeta = new TransMeta( getClass().getResource( "/jms-generate-produce.ktr" ).getPath() );
+    TransMeta transMeta = new TransMeta( DefaultBowl.getInstance(),
+      getClass().getResource( "/jms-generate-produce.ktr" ).getPath() );
     Trans trans = new Trans( transMeta );
     trans.prepareExecution( new String[] {} );
 
@@ -263,5 +259,13 @@ public class JmsProducerTest {
     trans.startThreads();
     trans.waitUntilFinished();
     verify( jmsContext ).close();
+  }
+
+  @Test
+  public void testProcessRow() throws Exception {
+
+    doReturn( null ).when( step ).getRow();
+
+    assertFalse( step.processRow( meta, data ) );
   }
 }

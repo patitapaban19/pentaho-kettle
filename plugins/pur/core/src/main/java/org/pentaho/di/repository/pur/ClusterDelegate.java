@@ -1,19 +1,16 @@
-/*!
- * Copyright 2010 - 2017 Hitachi Vantara.  All rights reserved.
+/*! ******************************************************************************
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Pentaho
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- */
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
 package org.pentaho.di.repository.pur;
 
 import java.util.List;
@@ -70,6 +67,11 @@ public class ClusterDelegate extends AbstractDelegate implements ITransformer, S
   }
 
   public void dataNodeToElement( DataNode rootNode, RepositoryElementInterface element ) throws KettleException {
+    dataNodeToElement( rootNode, element, null );
+  }
+
+  private void dataNodeToElement( DataNode rootNode, RepositoryElementInterface element,
+    List<SlaveServer> loadedSlaveServers ) {
     ClusterSchema clusterSchema = (ClusterSchema) element;
     // The metadata...
     clusterSchema.setBasePort( getString( rootNode, PROP_BASE_PORT ) );
@@ -83,7 +85,8 @@ public class ClusterDelegate extends AbstractDelegate implements ITransformer, S
     for ( int i = 0; i < nrSlaves; i++ ) {
       if ( attrNode.hasProperty( String.valueOf( i ) ) ) {
         DataNodeRef slaveNodeRef = attrNode.getProperty( String.valueOf( i ) ).getRef();
-        clusterSchema.getSlaveServers().add( findSlaveServer( new StringObjectId( slaveNodeRef.toString() ) ) );
+        clusterSchema.getSlaveServers().add(
+          findSlaveServer( new StringObjectId( slaveNodeRef.toString() ), loadedSlaveServers ) );
       }
     }
   }
@@ -113,10 +116,10 @@ public class ClusterDelegate extends AbstractDelegate implements ITransformer, S
     return rootNode;
   }
 
-  private SlaveServer findSlaveServer( ObjectId slaveServerId ) {
+  private SlaveServer findSlaveServer( ObjectId slaveServerId, List<SlaveServer> loadedSlaveServers ) {
     List<SlaveServer> slaveServers;
     try {
-      slaveServers = repo.getSlaveServers();
+      slaveServers = loadedSlaveServers == null ? repo.getSlaveServers() : loadedSlaveServers;
       for ( SlaveServer slaveServer : slaveServers ) {
         if ( slaveServer.getObjectId().equals( slaveServerId ) ) {
           return slaveServer;
@@ -135,7 +138,14 @@ public class ClusterDelegate extends AbstractDelegate implements ITransformer, S
 
   public ClusterSchema assemble( RepositoryFile file, NodeRepositoryFileData data, VersionSummary version )
     throws KettleException {
-    ClusterSchema clusterSchema = (ClusterSchema) dataNodeToElement( data.getNode() );
+    return assemble( file, data, version, null );
+  }
+
+  // During a batch load, resolve dependencies from that load rather than re-entering the unpublished cache.
+  ClusterSchema assemble( RepositoryFile file, NodeRepositoryFileData data, VersionSummary version,
+    List<SlaveServer> loadedSlaveServers ) {
+    ClusterSchema clusterSchema = new ClusterSchema();
+    dataNodeToElement( data.getNode(), clusterSchema, loadedSlaveServers );
     clusterSchema.setName( file.getTitle() );
     clusterSchema.setObjectId( new StringObjectId( file.getId().toString() ) );
     clusterSchema.setObjectRevision( repo.createObjectRevision( version ) );

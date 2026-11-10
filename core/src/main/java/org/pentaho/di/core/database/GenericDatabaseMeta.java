@@ -1,33 +1,28 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.database;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.core.row.ValueMetaInterface;
 
 import java.sql.SQLException;
 import java.util.Map;
+
+import static org.pentaho.di.core.util.Utils.setStringValueFromMap;
 
 /**
  * Contains Generic Database Connection information through static final members
@@ -53,7 +48,7 @@ public class GenericDatabaseMeta extends BaseDatabaseMeta implements DatabaseInt
   @Override
   public int[] getAccessTypeList() {
     return new int[] {
-      DatabaseMeta.TYPE_ACCESS_NATIVE, DatabaseMeta.TYPE_ACCESS_ODBC, DatabaseMeta.TYPE_ACCESS_JNDI };
+      DatabaseMeta.TYPE_ACCESS_NATIVE, DatabaseMeta.TYPE_ACCESS_JNDI };
   }
 
   /**
@@ -69,23 +64,12 @@ public class GenericDatabaseMeta extends BaseDatabaseMeta implements DatabaseInt
 
   @Override
   public String getDriverClass() {
-    if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_NATIVE ) {
-      String driverClass = getAttributes().getProperty( ATRRIBUTE_CUSTOM_DRIVER_CLASS, "" );
-      return driverClass;
-    } else {
-      return "sun.jdbc.odbc.JdbcOdbcDriver"; // always ODBC!
-    }
-
+    return getAttributes().getProperty( ATRRIBUTE_CUSTOM_DRIVER_CLASS, "" );
   }
 
   @Override
   public String getURL( String hostname, String port, String databaseName ) {
-    if ( getAccessType() == DatabaseMeta.TYPE_ACCESS_NATIVE ) {
-      String url = getAttributes().getProperty( ATRRIBUTE_CUSTOM_URL, "" );
-      return url;
-    } else {
-      return "jdbc:odbc:" + databaseName;
-    }
+    return getAttributes().getProperty( ATRRIBUTE_CUSTOM_URL, "" );
   }
 
   /**
@@ -304,7 +288,13 @@ public class GenericDatabaseMeta extends BaseDatabaseMeta implements DatabaseInt
     return super.getAttribute( DATABASE_DIALECT_ID, getPluginName() );
   }
 
-  private void resolveDialect( String dialectName ) {
+  @VisibleForTesting
+  protected DatabaseInterface getDatabaseDialectInternal() {
+    return databaseDialect;
+  }
+
+  @VisibleForTesting
+  protected void resolveDialect( String dialectName ) {
     if ( dialectName == null ) {
       return;
     }
@@ -931,5 +921,11 @@ public class GenericDatabaseMeta extends BaseDatabaseMeta implements DatabaseInt
       return databaseDialect.getExtraOptionsHelpText();
     }
     return super.getExtraOptionsHelpText();
+  }
+
+  @Override
+  public void setConnectionSpecificInfoFromAttributes( Map<String, String> attributes ) {
+    addAttribute( ATRRIBUTE_CUSTOM_URL, setStringValueFromMap( attributes, ATRRIBUTE_CUSTOM_URL ) );
+    addAttribute( ATRRIBUTE_CUSTOM_DRIVER_CLASS, setStringValueFromMap( attributes, ATRRIBUTE_CUSTOM_DRIVER_CLASS ) );
   }
 }

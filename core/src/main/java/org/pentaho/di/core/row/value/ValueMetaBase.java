@@ -1,25 +1,17 @@
 //CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.row.value;
 
@@ -153,6 +145,7 @@ public class ValueMetaBase implements ValueMetaInterface {
   protected boolean lenientStringToNumber;
   protected boolean ignoreTimezone;
   protected boolean emptyStringAndNullAreDifferent;
+  protected boolean ignoreOutOfRange;
 
   protected SimpleDateFormat dateFormat;
   protected boolean dateFormatChanged;
@@ -242,13 +235,14 @@ public class ValueMetaBase implements ValueMetaInterface {
     this.identicalFormat = true;
     this.bigNumberFormatting = true;
     this.lenientStringToNumber =
-      convertStringToBoolean( Const.NVL( System.getProperty( Const.KETTLE_LENIENT_STRING_TO_NUMBER_CONVERSION, "N" ),
-        "N" ) );
+      "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_LENIENT_STRING_TO_NUMBER_CONVERSION, "N" ) );
     this.ignoreTimezone =
-      convertStringToBoolean( Const.NVL( System.getProperty( Const.KETTLE_COMPATIBILITY_DB_IGNORE_TIMEZONE, "N" ),
-        "N" ) );
-    this.emptyStringAndNullAreDifferent = convertStringToBoolean(
-      Const.NVL( System.getProperty( Const.KETTLE_EMPTY_STRING_DIFFERS_FROM_NULL, "N" ), "N" ) );
+      "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_COMPATIBILITY_DB_IGNORE_TIMEZONE, "N" ) );
+    this.emptyStringAndNullAreDifferent =
+      "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_EMPTY_STRING_DIFFERS_FROM_NULL, "N" ) );
+    this.ignoreOutOfRange =
+      "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_IGNORE_OUT_OF_RANGE_EXCEPTION, "N" ) );
+
 
     this.comparator = comparator;
     determineSingleByteEncoding();
@@ -1033,8 +1027,8 @@ public class ValueMetaBase implements ValueMetaInterface {
 
         if ( parsePosition.getIndex() < string.length() ) {
           throw new KettleValueException( toString()
-              + " : couldn't convert String to number : non-numeric character found at position "
-              + ( parsePosition.getIndex() + 1 ) + " for value [" + string + "]" );
+              + " : couldn't convert String to number with " + ( ( getFormatMask() == null ) ? "empty format" : "format [" + getFormatMask() + "]" ) +  ": unexpected character found at position "
+              + ( parsePosition.getErrorIndex() + 1 ) + " for value [" + string + "]" );
         }
 
       }
@@ -1338,18 +1332,29 @@ public class ValueMetaBase implements ValueMetaInterface {
     try {
       Number number;
       if ( lenientStringToNumber ) {
-        number = new Long( getDecimalFormat( false ).parse( string ).longValue() );
+        number = getDecimalFormat( false ).parse( string );
       } else {
         ParsePosition parsePosition = new ParsePosition( 0 );
         number = getDecimalFormat( false ).parse( string, parsePosition );
 
         if ( parsePosition.getIndex() < string.length() ) {
           throw new KettleValueException( toString()
-              + " : couldn't convert String to number : non-numeric character found at position "
-              + ( parsePosition.getIndex() + 1 ) + " for value [" + string + "]" );
+            + " : couldn't convert String to number : non-numeric character found at position "
+            + ( parsePosition.getIndex() + 1 ) + " for value [" + string + "]" );
         }
-
       }
+
+      if ( number instanceof Double && ( number.doubleValue() < Long.MIN_VALUE
+        || number.doubleValue() > Long.MAX_VALUE ) ) {
+        log.logBasic( "Value [" + string + "] is out of range for Integer." );
+        if ( !ignoreOutOfRange ) {
+          throw new KettleValueException( toString()
+            + " : couldn't convert String to Integer : value Out of Range [" + string
+            + "]. Change the destination data type or round to the nearest value possible for Integer by setting "
+            + "property KETTLE_IGNORE_OUT_OF_RANGE_EXCEPTION to \"Y\". " );
+        }
+      }
+
       return new Long( number.longValue() );
     } catch ( Exception e ) {
       throw new KettleValueException( toString() + " : couldn't convert String to Integer", e );
@@ -1677,10 +1682,14 @@ public class ValueMetaBase implements ValueMetaInterface {
           // inexpensive too.
 
         case ValueMetaInterface.TYPE_BINARY:
-          byte[] origin = (byte[]) object;
-          byte[] target = new byte[origin.length];
-          System.arraycopy( origin, 0, target, 0, origin.length );
-          return target;
+          if ( object instanceof java.lang.String ) {
+            return object;
+          } else {
+            byte[] origin = (byte[]) object;
+            byte[] target = new byte[origin.length];
+            System.arraycopy( origin, 0, target, 0, origin.length );
+            return target;
+          }
 
         case ValueMetaInterface.TYPE_SERIALIZABLE:
           // Let's not create a copy but simply return the same value.

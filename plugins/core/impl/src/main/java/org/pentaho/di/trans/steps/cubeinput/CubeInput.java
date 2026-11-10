@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.cubeinput;
 
@@ -102,13 +94,14 @@ public class CubeInput extends BaseStep implements StepInterface {
         if ( meta.isAddResultFile() ) {
           ResultFile resultFile =
             new ResultFile(
-              ResultFile.FILE_TYPE_GENERAL, KettleVFS.getFileObject( filename, getTransMeta() ),
+              ResultFile.FILE_TYPE_GENERAL, KettleVFS.getInstance( getTransMeta().getBowl() )
+                .getFileObject( filename, getTransMeta() ),
               getTransMeta().getName(), toString() );
           resultFile.setComment( "File was read by a Cube Input step" );
           addResultFile( resultFile );
         }
 
-        data.fis = KettleVFS.getInputStream( filename, this );
+        data.fis = KettleVFS.getInstance( getTransMeta().getBowl() ).getInputStream( filename, this );
         data.zip = new GZIPInputStream( data.fis );
         data.dis = new DataInputStream( data.zip );
 
@@ -147,6 +140,13 @@ public class CubeInput extends BaseStep implements StepInterface {
       logError( BaseMessages.getString( PKG, "CubeInput.Log.ErrorClosingCube" ) + e.toString() );
       setErrors( 1 );
       stopAll();
+    }
+    // HACK! This is a temporary workaround for commons-vfs bug in 2.8.0 where a null pointer gets thrown
+    // when the stream gets closed from a different thread. This has been fixed in 2.9.0, but we can't move
+    // to that version due to a bug involving truncation on writes. This should be removed when can update
+    // this library. See BACKLOG-39189, https://github.com/apache/commons-vfs/pull/167
+    catch ( NullPointerException e ) {
+      logDebug( "Catching exception to work around commons-vfs 2.8.0 close() bug: " + e.toString() );
     }
 
     super.dispose( smi, sdi );

@@ -1,41 +1,35 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.trans.step.jms.context;
 
 import org.apache.activemq.artemis.junit.EmbeddedJMSResource;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.pentaho.di.core.KettleEnvironment;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.KettleLogStore;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.core.logging.LogChannelInterfaceFactory;
 import org.pentaho.di.core.logging.LogLevel;
 import org.pentaho.di.core.plugins.StepPluginType;
+import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.jms.JmsConsumerMeta;
@@ -55,12 +49,13 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
-@RunWith( MockitoJUnitRunner.class )
+@RunWith( MockitoJUnitRunner.StrictStubs.class )
 public class ActiveMQProviderTest {
+  @ClassRule public static RestorePDIEngineEnvironment env = new RestorePDIEngineEnvironment();
   @Mock LogChannelInterfaceFactory logChannelFactory;
   @Mock LogChannelInterface logChannel;
 
@@ -91,25 +86,26 @@ public class ActiveMQProviderTest {
       JmsConsumerMeta.class,
       JmsConsumerMeta.class.getAnnotation( org.pentaho.di.core.annotations.Step.class ),
       Collections.emptyList(), false, null );
-    KettleEnvironment.init();
   }
 
   @Before
   public void setUp() {
     KettleLogStore.setLogChannelInterfaceFactory( logChannelFactory );
     doReturn( LogLevel.BASIC ).when( logChannel ).getLogLevel();
-    when( logChannelFactory.create( any(), any() ) ).thenReturn( logChannel );
-    when( logChannelFactory.create( any() ) ).thenReturn( logChannel );
+    lenient().when( logChannelFactory.create( any(), any() ) ).thenReturn( logChannel );
+    lenient().when( logChannelFactory.create( any() ) ).thenReturn( logChannel );
   }
 
   @Test public void testFullCircle() throws KettleException, InterruptedException, TimeoutException,
     ExecutionException {
-    TransMeta consumerMeta = new TransMeta( getClass().getResource( "/amq-consumer.ktr" ).getPath() );
+    TransMeta consumerMeta = new TransMeta( DefaultBowl.getInstance(),
+      getClass().getResource( "/amq-consumer.ktr" ).getPath() );
     Trans consumerTrans = new Trans( consumerMeta );
     consumerTrans.prepareExecution( new String[] {} );
     consumerTrans.startThreads();
 
-    TransMeta producerMeta = new TransMeta( getClass().getResource( "/amq-producer.ktr" ).getPath() );
+    TransMeta producerMeta = new TransMeta( DefaultBowl.getInstance(),
+      getClass().getResource( "/amq-producer.ktr" ).getPath() );
     Trans producerTrans = new Trans( producerMeta );
     producerTrans.prepareExecution( new String[] {} );
     producerTrans.startThreads();

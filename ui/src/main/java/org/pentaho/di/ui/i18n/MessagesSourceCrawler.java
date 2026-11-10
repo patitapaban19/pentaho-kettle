@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.i18n;
 
@@ -26,6 +18,8 @@ import org.apache.commons.vfs2.FileName;
 import org.apache.commons.vfs2.FileObject;
 import org.apache.commons.vfs2.FileSelectInfo;
 import org.apache.commons.vfs2.FileSelector;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.fileinput.FileInputList;
@@ -34,6 +28,7 @@ import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.variables.Variables;
 import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.core.xml.XMLHandler;
+import org.pentaho.di.core.xml.XMLParserFactoryProducer;
 import org.pentaho.di.i18n.BaseMessages;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
@@ -215,16 +210,16 @@ public class MessagesSourceCrawler {
     }
   }
 
-  public void crawl() throws Exception {
+  public void crawl( Bowl bowl ) throws Exception {
     crawlSourceDirectories();
     // Also search for keys in the XUL files...
-    crawlXmlFolders();
+    crawlXmlFolders( bowl );
   }
 
   public void crawlSourceDirectories() throws Exception {
 
     for ( final String sourceDirectory : sourceDirectories ) {
-      FileObject folder = KettleVFS.getFileObject( sourceDirectory );
+      FileObject folder = KettleVFS.getInstance( DefaultBowl.getInstance() ).getFileObject( sourceDirectory );
       FileObject[] javaFiles = folder.findFiles( new FileSelector() {
         @Override
         public boolean traverseDescendents( FileSelectInfo info ) throws Exception {
@@ -248,7 +243,7 @@ public class MessagesSourceCrawler {
     }
   }
 
-  protected void crawlXmlFolders() throws Exception {
+  protected void crawlXmlFolders( Bowl bowl ) throws Exception {
 
     for ( SourceCrawlerXMLFolder xmlFolder : xmlFolders ) {
       String[] xmlDirs = { xmlFolder.getFolder() };
@@ -257,7 +252,7 @@ public class MessagesSourceCrawler {
       boolean[] xmlSubdirs = { true }; // search sub-folders too
 
       FileInputList xulFileInputList =
-        FileInputList.createFileList( new Variables(), xmlDirs, xmlMasks, xmlReq, xmlSubdirs );
+        FileInputList.createFileList( bowl, new Variables(), xmlDirs, xmlMasks, xmlReq, xmlSubdirs );
       for ( FileObject fileObject : xulFileInputList.getFiles() ) {
         try {
           Document doc = XMLHandler.loadXMLFile( fileObject );
@@ -285,7 +280,7 @@ public class MessagesSourceCrawler {
       return;
     }
 
-    TransformerFactory transformerFactory = TransformerFactory.newInstance();
+    TransformerFactory transformerFactory = XMLParserFactoryProducer.createSecureTransformerFactory();
     Transformer transformer = transformerFactory.newTransformer();
     transformer.setOutputProperty( OutputKeys.OMIT_XML_DECLARATION, YES );
     transformer.setOutputProperty( OutputKeys.INDENT, YES );

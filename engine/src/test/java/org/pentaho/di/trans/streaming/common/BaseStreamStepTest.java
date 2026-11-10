@@ -1,35 +1,27 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.streaming.common;
 
 import org.junit.Before;
+import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
-import org.pentaho.di.core.KettleEnvironment;
+import org.mockito.junit.MockitoJUnitRunner;
 import org.pentaho.di.core.ObjectLocationSpecificationMethod;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.exception.KettleException;
@@ -37,6 +29,7 @@ import org.pentaho.di.core.logging.KettleLogStore;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.core.logging.LogChannelInterfaceFactory;
 import org.pentaho.di.core.variables.Variables;
+import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
@@ -56,14 +49,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.contains;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @RunWith ( MockitoJUnitRunner.class )
 public class BaseStreamStepTest {
+  @ClassRule public static RestorePDIEngineEnvironment env = new RestorePDIEngineEnvironment();
   private BaseStreamStep baseStreamStep;
 
   @Mock BaseStreamStepMeta meta;
@@ -87,6 +81,10 @@ public class BaseStreamStepTest {
     TransMeta transMeta = new TransMeta();
     transMeta.addStep( stepMeta );
     Trans trans = new Trans( transMeta );
+
+    stepMeta.setParentTransMeta( transMeta );
+    when( parentStepMeta.getParentTransMeta() ).thenReturn( transMeta );
+    when( meta.getParentStepMeta() ).thenReturn( stepMeta );
 
     baseStreamStep = new BaseStreamStep( stepMeta, stepData, 1, transMeta, trans );
     baseStreamStep.source = streamSource;
@@ -114,13 +112,11 @@ public class BaseStreamStepTest {
 
 
   @Test
-  public void testInitFilenameSubstitution() throws IOException, KettleException {
+  public void testInitFilenameSubstitution() throws IOException {
     // verifies that filename resolution uses the parents ${Internal.Entry.Current.Directory}.
     // Necessary since the Current.Directory may change when running non-locally.
     // Variables should all be set in variableizedStepMeta after init, with the caveat that
     // the substrans location must be set using the parents Current.Directory.
-    KettleEnvironment.init();
-
     File testFile = File.createTempFile( "testInitFilenameSubstitution", ".ktr",
       folder.getRoot() );
     try ( PrintWriter pw = new PrintWriter( testFile ) ) {
@@ -130,13 +126,11 @@ public class BaseStreamStepTest {
     }
 
     when( meta.getParentStepMeta() ).thenReturn( parentStepMeta );
-    when( metaWithVariables.getFileName() ).thenReturn( "noSuchFilename.ktr" );
     when( meta.withVariables( baseStreamStep ) ).thenReturn( metaWithVariables );
     baseStreamStep.getParentVariableSpace()
       .setVariable( "Internal.Entry.Current.Directory",
         testFile.getParentFile().getAbsolutePath() );
 
-    when( metaWithVariables.getSpecificationMethod() ).thenReturn( ObjectLocationSpecificationMethod.FILENAME );
     when( meta.getSpecificationMethod() ).thenReturn( ObjectLocationSpecificationMethod.FILENAME );
     when( meta.getFileName() ).thenReturn( "${Internal.Entry.Current.Directory}/" + testFile.getName() );
 

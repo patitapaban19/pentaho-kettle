@@ -1,34 +1,26 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.base;
 
-import org.apache.commons.lang.math.NumberUtils;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.pentaho.di.core.parameters.NamedParams;
 import org.pentaho.di.core.parameters.UnknownParamException;
 
-import java.util.Map;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Map;
 
 public class Params implements IParams {
 
@@ -61,6 +53,8 @@ public class Params implements IParams {
   private String base64Zip;
   private NamedParams namedParams;
   private NamedParams customNamedParams;
+  private NamedParams pluginNamedParams;
+  private String runConfiguration;
 
   private Params() {
 
@@ -96,12 +90,14 @@ public class Params implements IParams {
     private String base64Zip;
     private NamedParams namedParams;
     private NamedParams customNamedParams;
+    private NamedParams pluginNamedParams;
+    private String runConfiguration;
 
     public Builder() {
       this( java.util.UUID.randomUUID().toString() );
     }
 
-    public Builder( String  uuid ) {
+    public Builder( String uuid ) {
       this.uuid = uuid;
     }
 
@@ -245,6 +241,16 @@ public class Params implements IParams {
       return this;
     }
 
+    public Builder pluginNamedParams( NamedParams pluginNamedParams ) {
+      this.pluginNamedParams = pluginNamedParams;
+      return this;
+    }
+
+    public Builder runConfiguration( String runConfiguration ) {
+      this.runConfiguration = runConfiguration;
+      return this;
+    }
+
     public Params build() {
       Params params = new Params();
       params.uuid = uuid;
@@ -272,10 +278,14 @@ public class Params implements IParams {
       params.oldLogFile = oldLogFile;
       params.version = version;
       params.resultSetStepName = resultSetStepName;
-      params.resultSetCopyNumber = NumberUtils.isNumber( resultSetCopyNumber ) ? resultSetCopyNumber : "0" /* default */;
+      params.resultSetCopyNumber =
+        NumberUtils.isNumber( resultSetCopyNumber ) ? resultSetCopyNumber : "0" /* default */;
       params.base64Zip = base64Zip;
       params.namedParams = namedParams;
       params.customNamedParams = customNamedParams;
+      params.pluginNamedParams = pluginNamedParams;
+      params.runConfiguration = runConfiguration;
+
 
       return params;
     }
@@ -534,7 +544,7 @@ public class Params implements IParams {
   @Override
   public Map<String, String> getParams() {
     if ( this.namedParams == null ) {
-      return Collections.EMPTY_MAP;
+      return Collections.emptyMap();
     }
 
     Map<String, String> params = new HashMap<String, String>();
@@ -562,7 +572,7 @@ public class Params implements IParams {
   @Override
   public Map<String, String> getCustomParams() {
     if ( this.customNamedParams == null ) {
-      return Collections.EMPTY_MAP;
+      return Collections.emptyMap();
     }
 
     Map<String, String> customParams = new HashMap<String, String>();
@@ -576,5 +586,39 @@ public class Params implements IParams {
     }
 
     return customParams;
+  }
+
+  public String getRunConfiguration() {
+    return runConfiguration;
+  }
+
+  public void setRunConfiguration( String runConfiguration ) {
+    this.runConfiguration = runConfiguration;
+  }
+
+  @Override
+  public NamedParams getPluginNamedParams() {
+    return pluginNamedParams;
+  }
+
+  public void setPluginNamedParams( NamedParams customPluginNamedParams ) {
+    this.pluginNamedParams = customPluginNamedParams;
+  }
+
+  @Override
+  public Map<String, String> getPluginParams() {
+    if ( this.pluginNamedParams == null ) {
+      return Collections.emptyMap();
+    }
+    Map<String, String> pluginParams = new HashMap<>();
+
+    for ( String key : this.pluginNamedParams.listParameters() ) {
+      try {
+        pluginParams.put( key, this.pluginNamedParams.getParameterValue( key ) );
+      } catch ( UnknownParamException e ) {
+        /* no-op */
+      }
+    }
+    return pluginParams;
   }
 }

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.database;
 
@@ -87,6 +79,21 @@ public interface DatabaseInterface extends Cloneable {
    *          The changed to set.
    */
   void setChanged( boolean changed );
+
+  /**
+   * @return Returns the connection Id from the connection management service.
+   */
+  default String getConnectionId() {
+    return null;
+  }
+
+  /**
+   * @param connectionId
+   *      The connection Id from the connection management service to set.
+   */
+  default void setConnectionId( String connectionId ) {
+    // default implementation
+  }
 
   /**
    * @return Returns the connection Name.
@@ -982,6 +989,15 @@ public interface DatabaseInterface extends Cloneable {
   String getSQLListOfSchemas();
 
   /**
+   * @param dbMeta
+   * @return the SQL to retrieve the list of schemas
+   */
+  default String getSQLListOfSchemas( DatabaseMeta dbMeta ) {
+    // Return the previous behavior as default implementation
+    return getSQLListOfSchemas();
+  }
+
+  /**
    * @return The maximum number of columns in a database, <=0 means: no known limit
    */
   int getMaxColumnsInIndex();
@@ -1296,5 +1312,20 @@ public interface DatabaseInterface extends Cloneable {
 
   default List<String> getNamedClusterList() {
     return null;
+  }
+
+  /**
+   * Sets connection-specific information from the provided attributes map in the overridden methods.
+   * This method functions similarly to the
+   * {@see org.pentaho.ui.database.event.DataHandler#setConnectionSpecificInfo()} and
+   * {@see org.pentaho.ui.database.event.DbInfoHandler#saveConnectionSpecificInfo()} methods.
+   * For Webttle to interact properly with the specific database type, this method should be overridden
+   * whenever any additional attributes need to be set for the connection.
+   *
+   * @param attributes a map containing key-value pairs of connection-specific attributes.
+   *
+   */
+  default void setConnectionSpecificInfoFromAttributes( Map<String, String> attributes ) {
+    // Default implementation does nothing
   }
 }

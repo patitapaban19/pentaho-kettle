@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.checksum;
 
@@ -81,7 +73,8 @@ public class CheckSum extends BaseStep implements StepInterface {
       RowMetaInterface inputRowMeta = getInputRowMeta();
       data.outputRowMeta = inputRowMeta.clone();
       data.nrInfields = data.outputRowMeta.size();
-      meta.getFields( data.outputRowMeta, getStepname(), null, null, this, repository, metaStore );
+      meta.getFields( getTransMeta().getBowl(), data.outputRowMeta, getStepname(), null, null, this, repository,
+        metaStore );
 
       if ( meta.getFieldSeparatorString() != null && !meta.getFieldSeparatorString().isEmpty() ) {
         data.fieldSeparatorStringBytes = meta.getFieldSeparatorString().getBytes( StandardCharsets.UTF_8 );
@@ -108,45 +101,16 @@ public class CheckSum extends BaseStep implements StepInterface {
       }
 
       // Initialize the field converters
-      data.fieldConverters = new FieldToBytesConverter[fieldIndexMapping.length];
-      for ( int i = 0; i < fieldIndexMapping.length; i++ ) {
-        if ( meta.isOldChecksumBehaviour() ) {
-          data.fieldConverters[i] = new LegacyFieldToBytesConverter( inputRowMeta, fieldIndexMapping[i] );
-        } else {
-          if ( inputRowMeta.getValueMeta( fieldIndexMapping[i] ).isBinary() ) {
-            data.fieldConverters[i] = new BinaryFieldToBytesConverter( inputRowMeta, fieldIndexMapping[i] );
-          } else {
-            data.fieldConverters[i] = new NonBinaryFieldToBytesConverter( inputRowMeta, fieldIndexMapping[i] );
-          }
-        }
-      }
+      initializeFieldConverters( inputRowMeta, fieldIndexMapping );
 
-      try {
-
-        switch ( meta.getCheckSumType() ) {
-          case CheckSumMeta.TYPE_MD5:
-          case CheckSumMeta.TYPE_SHA1:
-          case CheckSumMeta.TYPE_SHA256:
-            data.checksumCalculator =
-                new DigestChecksumCalculator( MessageDigest.getInstance( meta.getCheckSumType() ) );
-            break;
-          case CheckSumMeta.TYPE_ADLER32:
-            data.checksumCalculator = new ChecksumChecksumCalculator( new Adler32() );
-            break;
-          case CheckSumMeta.TYPE_CRC32:
-            data.checksumCalculator = new ChecksumChecksumCalculator( new CRC32() );
-            break;
-        }
-      } catch ( Exception e ) {
-        throw new KettleException( BaseMessages.getString( PKG, "CheckSum.Error.Digest" ), e );
-      }
+      // Initialize the checksum calculator
+      initializeChecksumCalculator();
 
     } // end if first
 
     Object[] outputRowData = null;
 
     try {
-
       // Update the checksum with the field content
       for ( int i = 0; i < data.fieldConverters.length; i++ ) {
         if ( i != 0 && data.fieldSeparatorStringBytes != null ) {
@@ -182,8 +146,7 @@ public class CheckSum extends BaseStep implements StepInterface {
       }
 
       // add new values to the row.
-      putRow( data.outputRowMeta, outputRowData ); // copy row to output
-      // rowset(s);
+      putRow( data.outputRowMeta, outputRowData ); // copy row to output rowset(s);
     } catch ( Exception e ) {
       boolean sendToErrorRow = false;
       String errorMessage = null;
@@ -204,6 +167,53 @@ public class CheckSum extends BaseStep implements StepInterface {
       }
     }
     return true;
+  }
+
+  private void initializeChecksumCalculator() throws KettleException {
+    try {
+      switch ( meta.getCheckSumType() ) {
+        case CheckSumMeta.TYPE_MD5:
+        case CheckSumMeta.TYPE_SHA1:
+        case CheckSumMeta.TYPE_SHA256:
+          data.checksumCalculator =
+              new DigestChecksumCalculator( MessageDigest.getInstance( meta.getCheckSumType() ) );
+          break;
+        case CheckSumMeta.TYPE_ADLER32:
+          data.checksumCalculator = new ChecksumChecksumCalculator( new Adler32() );
+          break;
+        case CheckSumMeta.TYPE_CRC32:
+          data.checksumCalculator = new ChecksumChecksumCalculator( new CRC32() );
+          break;
+        default:
+          throw new KettleException(
+          BaseMessages.getString( PKG, "CheckSum.Error.UnknownChecksumType", meta.getCheckSumType() ) );
+      }
+    } catch ( KettleException e ) {
+      // Rethrow it
+      throw e;
+    } catch ( Exception e ) {
+      throw new KettleException( BaseMessages.getString( PKG, "CheckSum.Error.Digest" ), e );
+    }
+  }
+
+  private void initializeFieldConverters( RowMetaInterface inputRowMeta, int[] fieldIndexMapping ) throws KettleException {
+    data.fieldConverters = new FieldToBytesConverter[ fieldIndexMapping.length ];
+    for ( int i = 0; i < fieldIndexMapping.length; i++ ) {
+      switch ( meta.getEvaluationMethod() ) {
+        case CheckSumMeta.EVALUATION_METHOD_BYTES:
+          data.fieldConverters[ i ] = new BytesToBytesConverter( inputRowMeta, fieldIndexMapping[ i ] );
+          break;
+        case CheckSumMeta.EVALUATION_METHOD_PENTAHO_STRINGS:
+          data.fieldConverters[ i ] = new PentahoStringsToBytesConverter( inputRowMeta, fieldIndexMapping[ i ] );
+          break;
+        case CheckSumMeta.EVALUATION_METHOD_NATIVE_STRINGS:
+          data.fieldConverters[ i ] = new NativeStringsToBytesConverter( inputRowMeta, fieldIndexMapping[ i ] );
+          break;
+        default:
+          throw new KettleException(
+            BaseMessages.getString( PKG, "CheckSum.Error.UnknownEvaluationMethod", meta.getEvaluationMethod() ) );
+      }
+    }
   }
 
   private static String getStringFromBytes( byte[] bytes ) {
@@ -248,16 +258,12 @@ public class CheckSum extends BaseStep implements StepInterface {
         logError( BaseMessages.getString( PKG, "CheckSum.Error.ResultFieldMissing" ) );
         return false;
       }
-      if ( meta.isCompatibilityMode() && meta.getCheckSumType() == CheckSumMeta.TYPE_SHA256 ) {
-        logError( BaseMessages.getString( PKG, "CheckSumMeta.CheckResult.CompatibilityModeSHA256Error" ) );
-        return false;
-      }
       return true;
     }
     return false;
   }
 
-  public static interface GenericChecksumCalculator<R> {
+  public interface GenericChecksumCalculator<R> {
 
     void update( byte[] contentBytes );
 
@@ -287,7 +293,6 @@ public class CheckSum extends BaseStep implements StepInterface {
         checksum.reset();
       }
     }
-
   }
 
   public static class DigestChecksumCalculator implements GenericChecksumCalculator<byte[]> {
@@ -309,67 +314,86 @@ public class CheckSum extends BaseStep implements StepInterface {
     public byte[] getResult() {
       return digest.digest();
     }
-
   }
 
-  public static interface FieldToBytesConverter {
+  public interface FieldToBytesConverter {
 
     byte[] getBytes( Object[] row ) throws KettleException;
 
   }
 
-  public static class BinaryFieldToBytesConverter implements FieldToBytesConverter {
+  /**
+   * <p>Use Pentaho String representation of fields using format masks (7.1 and below behavior).</p>
+   */
+  public static class PentahoStringsToBytesConverter implements FieldToBytesConverter {
 
     private final RowMetaInterface rmi;
     private final int fieldIndex;
 
-    public BinaryFieldToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
-      rmi = inputRowMeta;
+    public PentahoStringsToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
+      this.rmi = inputRowMeta;
       this.fieldIndex = fieldIndex;
     }
 
     @Override
     public byte[] getBytes( Object[] row ) throws KettleException {
+      return String.valueOf( rmi.getString( row, fieldIndex ) ).getBytes();
+    }
+  }
+
+  /**
+   * <p>Use Native String representation of fields (8.0 behavior).</p>
+   */
+  public static class NativeStringsToBytesConverter implements FieldToBytesConverter {
+
+    private final ValueMetaInterface vmi;
+    private final int fieldIndex;
+
+    public NativeStringsToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
+      this.vmi = inputRowMeta.getValueMeta( fieldIndex );
+      this.fieldIndex = fieldIndex;
+    }
+
+    @Override
+    public byte[] getBytes( Object[] row ) throws KettleException {
+      return String.valueOf( vmi.getNativeDataType( row[ fieldIndex ] ) ).getBytes();
+    }
+  }
+
+  /**
+   * <p>Use Byte Representation of fields (default behavior 8.1 forward).</p>
+   */
+  public static class BytesToBytesConverter implements FieldToBytesConverter {
+
+    private final RowMetaInterface rmi;
+    private final ValueMetaInterface vmi;
+    private final int fieldIndex;
+    private final boolean isBinary;
+
+    public BytesToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
+      this.rmi = inputRowMeta;
+      this.vmi = rmi.getValueMeta( fieldIndex );
+      this.fieldIndex = fieldIndex;
+      this.isBinary = vmi.isBinary();
+    }
+
+    @Override
+    public byte[] getBytes( Object[] row ) throws KettleException {
+      return isBinary ? getBytesFromBinary( row ) : getBytesFromNonBinary( row );
+    }
+
+    private byte[] getBytesFromBinary( Object[] row ) throws KettleException {
       return rmi.getBinary( row, fieldIndex );
     }
 
-  }
+    private byte[] getBytesFromNonBinary( Object[] row ) throws KettleException {
+      byte[] ret = null;
 
-  public static class NonBinaryFieldToBytesConverter implements FieldToBytesConverter {
-
-    private final ValueMetaInterface vmi;
-    private final int fieldIndex;
-
-    public NonBinaryFieldToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
-      this.vmi = inputRowMeta.getValueMeta( fieldIndex );
-      this.fieldIndex = fieldIndex;
-    }
-
-    @Override
-    public byte[] getBytes( Object[] row ) throws KettleException {
-      if ( row[fieldIndex] != null ) {
-        return vmi.getNativeDataType( row[fieldIndex] ).toString().getBytes();
+      if ( null != row[ fieldIndex ] ) {
+        ret = vmi.getNativeDataType( row[ fieldIndex ] ).toString().getBytes();
       }
-      return null;
-    }
 
+      return ret;
+    }
   }
-
-  public static class LegacyFieldToBytesConverter implements FieldToBytesConverter {
-
-    private final ValueMetaInterface vmi;
-    private final int fieldIndex;
-
-    public LegacyFieldToBytesConverter( RowMetaInterface inputRowMeta, int fieldIndex ) {
-      this.vmi = inputRowMeta.getValueMeta( fieldIndex );
-      this.fieldIndex = fieldIndex;
-    }
-
-    @Override
-    public byte[] getBytes( Object[] row ) throws KettleException {
-      return String.valueOf( vmi.getNativeDataType( row[fieldIndex] ) ).getBytes();
-    }
-
-  }
-
 }

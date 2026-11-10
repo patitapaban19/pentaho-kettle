@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.core;
 
@@ -50,6 +42,7 @@ import org.pentaho.di.core.logging.LogChannel;
 import org.pentaho.di.core.plugins.LifecyclePluginType;
 import org.pentaho.di.core.plugins.PluginInterface;
 import org.pentaho.di.core.plugins.PluginRegistry;
+import org.pentaho.di.core.util.StringUtil;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.laf.BasePropertyHandler;
 import org.pentaho.di.ui.core.gui.GUIResource;
@@ -68,6 +61,10 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.PropertyResourceBundle;
 import java.util.ResourceBundle;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.stream.Collectors;
+import java.util.Arrays;
 
 /**
  * We use Props to store all kinds of user interactive information such as the selected colors, fonts, positions of
@@ -90,6 +87,8 @@ public class PropsUI extends Props {
   protected List<LastUsedFile> openTabFiles;
   protected Map<String, List<LastUsedFile>> lastUsedRepoFiles;
 
+  protected String lastUsedLocalFile;
+
   protected String overriddenFileName;
 
   private Hashtable<String, WindowProperty> screens;
@@ -99,8 +98,6 @@ public class PropsUI extends Props {
   private static final String STRING_SHOW_WELCOME_PAGE_ON_STARTUP = "ShowWelcomePageOnStartup";
 
   private static final String STRING_SHOW_BRANDING_GRAPHICS = "ShowBrandingGraphics";
-
-  private static final String STRING_ONLY_SHOW_ACTIVE_FILE = "OnlyShowActiveFileInTree";
 
   private static final String SHOW_TOOL_TIPS = "ShowToolTips";
 
@@ -121,7 +118,7 @@ public class PropsUI extends Props {
    * @param t The type of properties file.
    */
   public static void init( Display d, int t ) {
-    if ( props == null ) {
+    if ( props == null || Const.isRunningOnWebspoonMode() ) {
       display = d;
       props = new PropsUI( t );
 
@@ -160,11 +157,29 @@ public class PropsUI extends Props {
   }
 
   public static PropsUI getInstance() {
-    if ( props != null ) {
+    if ( Const.isRunningOnWebspoonMode() ) {
+      try {
+        Class webSpoonUtils = Class.forName( "org.pentaho.di.webspoon.WebSpoonUtils" );
+        Method getUISession = webSpoonUtils.getDeclaredMethod( "getUISession" );
+        Class singletonUtil = Class.forName( "org.eclipse.rap.rwt.SingletonUtil" );
+        Method getUniqueInstance = Arrays.stream( singletonUtil.getDeclaredMethods() )
+                .filter( method -> method.getName().equals( "getUniqueInstance" ) && method.toGenericString().contains( "UISession" ) )
+                .collect( Collectors.toList() ).get( 0 );
+        return (PropsUI) getUniqueInstance.invoke( null, PropsUI.class, getUISession.invoke( null ) );
+      } catch ( ClassNotFoundException | NoSuchMethodException | InvocationTargetException | IllegalAccessException e ) {
+        e.printStackTrace();
+        return null;
+      }
+    }
+    else if ( props != null ) {
       return (PropsUI) props;
     }
 
     throw new RuntimeException( "Properties, Kettle systems settings, not initialised!" );
+  }
+
+  private PropsUI( ) {
+    super( Props.TYPE_PROPERTIES_SPOON );
   }
 
   private PropsUI( int t ) {
@@ -227,11 +242,12 @@ public class PropsUI extends Props {
     lastUsedRepoFiles = new LinkedHashMap<>();
     openTabFiles = new ArrayList<LastUsedFile>();
     screens = new Hashtable<String, WindowProperty>();
+    lastUsedLocalFile = StringUtil.EMPTY_STRING;
 
     properties.setProperty( STRING_LOG_LEVEL, getLogLevel() );
     properties.setProperty( STRING_LOG_FILTER, getLogFilter() );
 
-    if ( display != null ) {
+    if ( ( !Const.isRunningOnWebspoonMode() && display != null ) || ( Const.isRunningOnWebspoonMode() && Display.getCurrent() != null ) ) {
       // Set Default Look for all dialogs and sizes.
       String prop =
         BasePropertyHandler.getProperty( "Default_UI_Properties_Resource", "org.pentaho.di.ui.core.default" );
@@ -347,6 +363,7 @@ public class PropsUI extends Props {
   }
 
   public void setLastFiles() {
+    properties.setProperty( "lastUsedLocalFile", lastUsedLocalFile );
     properties.setProperty( "lastfiles", "" + lastUsedFiles.size() );
     for ( int i = 0; i < lastUsedFiles.size(); i++ ) {
       LastUsedFile lastUsedFile = lastUsedFiles.get( i );
@@ -447,6 +464,14 @@ public class PropsUI extends Props {
     addLastRepoFile( lastUsedFile );
   }
 
+  public void setLastUsedLocalFile( String filePath ) {
+    lastUsedLocalFile = filePath;
+  }
+
+  public String getLastUsedLocalFile() {
+    return lastUsedLocalFile;
+  }
+
   private void addLastRepoFile( LastUsedFile lastUsedFile ) {
     String repositoryName = lastUsedFile.getRepositoryName();
     String username = lastUsedFile.getUsername() != null ? lastUsedFile.getUsername() : "";
@@ -508,6 +533,8 @@ public class PropsUI extends Props {
         new LastUsedFile( fileType, filename, directory, sourceRepository, repositoryName, isOpened,
           openItemTypes ) );
     }
+
+    lastUsedLocalFile = Const.NVL( properties.getProperty( "lastUsedLocalFile" ), "" );
   }
 
   public void loadLastUsedRepoFiles() {
@@ -837,7 +864,11 @@ public class PropsUI extends Props {
   }
 
   public FontData getDefaultFontData() {
-    return display.getSystemFont().getFontData()[ 0 ];
+    if ( Const.isRunningOnWebspoonMode() ) {
+      return Display.getCurrent().getSystemFont().getFontData()[ 0 ];
+    } else {
+      return display.getSystemFont().getFontData()[0];
+    }
   }
 
   public void setMaxUndo( int max ) {
@@ -1078,7 +1109,11 @@ public class PropsUI extends Props {
    * @return Returns the display.
    */
   public static Display getDisplay() {
-    return display;
+    if ( Const.isRunningOnWebspoonMode() ) {
+      return Display.getCurrent();
+    } else {
+      return display;
+    }
   }
 
   /**
@@ -1167,15 +1202,6 @@ public class PropsUI extends Props {
 
   public void setBrandingActive( boolean active ) {
     properties.setProperty( STRING_SHOW_BRANDING_GRAPHICS, active ? YES : NO );
-  }
-
-  public boolean isOnlyActiveFileShownInTree() {
-    String show = properties.getProperty( STRING_ONLY_SHOW_ACTIVE_FILE, YES );
-    return YES.equalsIgnoreCase( show );
-  }
-
-  public void setOnlyActiveFileShownInTree( boolean show ) {
-    properties.setProperty( STRING_ONLY_SHOW_ACTIVE_FILE, show ? YES : NO );
   }
 
   public boolean showToolTips() {

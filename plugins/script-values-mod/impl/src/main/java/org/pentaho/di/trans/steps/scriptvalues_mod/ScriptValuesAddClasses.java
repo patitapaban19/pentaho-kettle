@@ -1,0 +1,43 @@
+/*! ******************************************************************************
+ *
+ * Pentaho
+ *
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
+ *
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
+ *
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
+
+package org.pentaho.di.trans.steps.scriptvalues_mod;
+
+public class ScriptValuesAddClasses {
+
+  private Class<?> addClass;
+  private Object addObject;
+  private String strJSName;
+
+  // private String strJarFile;
+
+  public ScriptValuesAddClasses( Class<?> addClass, Object addObject, String strJSName ) {
+    super();
+    this.addClass = addClass;
+    this.addObject = addObject;
+    this.strJSName = strJSName;
+  }
+
+  public Class<?> getAddClass() {
+    return this.addClass;
+  }
+
+  public Object getAddObject() {
+    return this.addObject;
+  }
+
+  public String getJSName() {
+    return this.strJSName;
+  }
+}

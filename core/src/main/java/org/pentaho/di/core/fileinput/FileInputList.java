@@ -1,26 +1,34 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.core.fileinput;
+
+import org.apache.commons.vfs2.AllFileSelector;
+import org.apache.commons.vfs2.FileObject;
+import org.apache.commons.vfs2.FileSelectInfo;
+import org.apache.commons.vfs2.FileSystemException;
+import org.apache.commons.vfs2.FileType;
+import org.apache.commons.vfs2.provider.compressed.CompressedFileFileObject;
+import org.apache.commons.vfs2.provider.local.LocalFile;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
+import org.pentaho.di.core.Const;
+import org.pentaho.di.core.logging.LogChannel;
+import org.pentaho.di.core.logging.LogChannelInterface;
+import org.pentaho.di.core.util.Utils;
+import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.vfs.KettleVFS;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,19 +41,6 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
-
-import org.apache.commons.vfs2.AllFileSelector;
-import org.apache.commons.vfs2.FileObject;
-import org.apache.commons.vfs2.FileSelectInfo;
-import org.apache.commons.vfs2.FileSystemException;
-import org.apache.commons.vfs2.FileType;
-import org.apache.commons.vfs2.provider.compressed.CompressedFileFileObject;
-import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
-import org.pentaho.di.core.logging.LogChannel;
-import org.pentaho.di.core.logging.LogChannelInterface;
-import org.pentaho.di.core.variables.VariableSpace;
-import org.pentaho.di.core.vfs.KettleVFS;
 
 public class FileInputList {
   private List<FileObject> files = new ArrayList<>();
@@ -100,11 +95,12 @@ public class FileInputList {
     StringBuilder buffer = new StringBuilder();
     for ( Iterator<FileObject> iter = nonExistantFiles.iterator(); iter.hasNext(); ) {
       FileObject file = iter.next();
-      buffer.append( file.getName().getURI() );
+      buffer.append( Const.optionallyDecodeUriString( file.getName().getURI() ) );
       buffer.append( Const.CR );
     }
     return buffer.toString();
   }
+
 
   private static boolean[] includeSubdirsFalse( int iLength ) {
     boolean[] includeSubdirs = new boolean[ iLength ];
@@ -114,44 +110,106 @@ public class FileInputList {
     return includeSubdirs;
   }
 
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static String[] createFilePathList( VariableSpace space, String[] fileName, String[] fileMask,
                                              String[] excludeFileMask, String[] fileRequired ) {
-    boolean[] includeSubdirs = includeSubdirsFalse( fileName.length );
-    return createFilePathList( space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+    return createFilePathList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired );
   }
 
+  public static String[] createFilePathList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                             String[] excludeFileMask, String[] fileRequired ) {
+    boolean[] includeSubdirs = includeSubdirsFalse( fileName.length );
+    return createFilePathList( bowl, space, fileName, fileMask, excludeFileMask, fileRequired, null );
+  }
+
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static String[] createFilePathList( VariableSpace space, String[] fileName, String[] fileMask,
                                              String[] excludeFileMask, String[] fileRequired,
                                              boolean[] includeSubdirs ) {
-    return createFilePathList( space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+    return createFilePathList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired,
+                               includeSubdirs, null );
   }
 
+  public static String[] createFilePathList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                             String[] excludeFileMask, String[] fileRequired,
+                                             boolean[] includeSubdirs ) {
+    return createFilePathList( bowl, space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+  }
+
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static String[] createFilePathList( VariableSpace space, String[] fileName, String[] fileMask,
                                              String[] excludeFileMask, String[] fileRequired, boolean[] includeSubdirs,
                                              FileTypeFilter[] filters ) {
+    return createFilePathList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired,
+                               includeSubdirs, filters );
+  }
+
+  public static String[] createFilePathList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                             String[] excludeFileMask, String[] fileRequired, boolean[] includeSubdirs,
+                                             FileTypeFilter[] filters ) {
     List<FileObject> fileList =
-      createFileList( space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, filters )
+      createFileList( bowl, space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, filters )
         .getFiles();
     String[] filePaths = new String[ fileList.size() ];
     for ( int i = 0; i < filePaths.length; i++ ) {
-      filePaths[ i ] = fileList.get( i ).getName().getURI();
+      filePaths[ i ] = Const.optionallyDecodeUriString( fileList.get( i ).getName().getURI() );
     }
     return filePaths;
   }
 
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static FileInputList createFileList( VariableSpace space, String[] fileName, String[] fileMask,
                                               String[] excludeFileMask, String[] fileRequired ) {
-    boolean[] includeSubdirs = includeSubdirsFalse( fileName.length );
-    return createFileList( space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+    return createFileList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired );
   }
 
+  public static FileInputList createFileList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                              String[] excludeFileMask, String[] fileRequired ) {
+    boolean[] includeSubdirs = includeSubdirsFalse( fileName.length );
+    return createFileList( bowl, space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+  }
+
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static FileInputList createFileList( VariableSpace space, String[] fileName, String[] fileMask,
                                               String[] excludeFileMask, String[] fileRequired,
                                               boolean[] includeSubdirs ) {
-    return createFileList( space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+    return createFileList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired,
+                           includeSubdirs );
   }
 
+  public static FileInputList createFileList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                              String[] excludeFileMask, String[] fileRequired,
+                                              boolean[] includeSubdirs ) {
+    return createFileList( bowl, space, fileName, fileMask, excludeFileMask, fileRequired, includeSubdirs, null );
+  }
+
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static FileInputList createFileList( VariableSpace space, String[] fileName, String[] fileMask,
+                                              String[] excludeFileMask, String[] fileRequired, boolean[] includeSubdirs,
+                                              FileTypeFilter[] fileTypeFilters ) {
+    return createFileList( DefaultBowl.getInstance(), space, fileName, fileMask, excludeFileMask, fileRequired,
+                           includeSubdirs, fileTypeFilters );
+  }
+
+  public static FileInputList createFileList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
                                               String[] excludeFileMask, String[] fileRequired, boolean[] includeSubdirs,
                                               FileTypeFilter[] fileTypeFilters ) {
     FileInputList fileInputList = new FileInputList();
@@ -176,7 +234,7 @@ public class FileInputList {
       }
 
       try {
-        FileObject directoryFileObject = KettleVFS.getFileObject( onefile, space );
+        FileObject directoryFileObject = KettleVFS.getInstance( bowl ).getFileObject( onefile, space );
         boolean processFolder = true;
         if ( onerequired ) {
           if ( !directoryFileObject.exists() ) {
@@ -265,7 +323,7 @@ public class FileInputList {
             }
             // We don't sort here, keep the order of the files in the archive.
           } else {
-            FileObject fileObject = KettleVFS.getFileObject( onefile, space );
+            FileObject fileObject = KettleVFS.getInstance( bowl ).getFileObject( onefile, space );
             if ( fileObject.exists() ) {
               if ( fileObject.isReadable() ) {
                 fileInputList.addFile( fileObject );
@@ -292,7 +350,17 @@ public class FileInputList {
     return fileInputList;
   }
 
-  public static FileInputList createFolderList( VariableSpace space, String[] folderName, String[] folderRequired ) {
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
+  public static FileInputList createFolderList( VariableSpace space, String[] folderName,
+                                                String[] folderRequired ) {
+    return createFolderList( DefaultBowl.getInstance(), space, folderName, folderRequired );
+  }
+
+  public static FileInputList createFolderList( Bowl bowl, VariableSpace space, String[] folderName,
+                                                String[] folderRequired ) {
     FileInputList fileInputList = new FileInputList();
 
     // Replace possible environment variables...
@@ -312,7 +380,7 @@ public class FileInputList {
       try {
         // Find all folder names in this directory
         //
-        directoryFileObject = KettleVFS.getFileObject( onefile, space );
+        directoryFileObject = KettleVFS.getInstance( bowl ).getFileObject( onefile, space );
         if ( directoryFileObject != null && directoryFileObject.getType() == FileType.FOLDER ) { // it's a directory
           FileObject[] fileObjects = directoryFileObject.findFiles( new AllFileSelector() {
             @Override
@@ -324,6 +392,10 @@ public class FileInputList {
 
             private boolean hasAccess( FileObject fileObject ) {
               try {
+                if ( fileObject instanceof LocalFile ) {
+                  // fileObject.isReadable wrongly returns true in windows file system even if not readable
+                  return Files.isReadable( Paths.get( ( new File( fileObject.getPath().toString() ) ).toURI() ) );
+                }
                 return fileObject.isReadable();
               } catch ( FileSystemException e ) {
                 // Something went wrong... well, let's assume "no access"!
@@ -403,7 +475,7 @@ public class FileInputList {
   public String[] getUrlStrings() {
     String[] fileStrings = new String[ files.size() ];
     for ( int i = 0; i < fileStrings.length; i++ ) {
-      fileStrings[ i ] = files.get( i ).getPublicURIString();
+      fileStrings[ i ] = Const.optionallyDecodeUriString( files.get( i ).getPublicURIString() );
     }
     return fileStrings;
   }
@@ -446,16 +518,34 @@ public class FileInputList {
     return nonAccessibleFiles.size() + nonExistantFiles.size();
   }
 
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static FileInputList createFileList( VariableSpace space, String[] fileName, String[] fileMask,
                                               String[] fileRequired, boolean[] includeSubdirs ) {
-    return createFileList(
-      space, fileName, fileMask, new String[ fileName.length ], fileRequired, includeSubdirs, null );
+    return createFileList( DefaultBowl.getInstance(), space, fileName, fileMask, fileRequired, includeSubdirs );
   }
 
+  public static FileInputList createFileList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
+                                              String[] fileRequired, boolean[] includeSubdirs ) {
+    return createFileList(
+      bowl, space, fileName, fileMask, new String[ fileName.length ], fileRequired, includeSubdirs, null );
+  }
+
+  /**
+   * @deprecated, use the version with the Bowl
+   */
+  @Deprecated
   public static String[] createFilePathList( VariableSpace space, String[] fileName, String[] fileMask,
+                                             String[] fileRequired ) {
+    return createFilePathList( DefaultBowl.getInstance(), space, fileName, fileMask, fileRequired );
+  }
+
+  public static String[] createFilePathList( Bowl bowl, VariableSpace space, String[] fileName, String[] fileMask,
                                              String[] fileRequired ) {
     boolean[] includeSubdirs = includeSubdirsFalse( fileName.length );
     return createFilePathList(
-      space, fileName, fileMask, new String[ fileName.length ], fileRequired, includeSubdirs, null );
+      bowl, space, fileName, fileMask, new String[ fileName.length ], fileRequired, includeSubdirs, null );
   }
 }

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core;
 
@@ -37,6 +29,7 @@ import org.pentaho.di.core.plugins.PluginInterface;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.plugins.PluginTypeInterface;
 import org.pentaho.di.core.row.value.ValueMetaPluginType;
+import org.pentaho.di.core.service.ServiceProviderPluginType;
 import org.pentaho.di.core.util.EnvUtil;
 import org.pentaho.di.i18n.BaseMessages;
 
@@ -62,7 +55,7 @@ public class KettleClientEnvironment {
   private static Boolean initialized;
 
   public enum ClientType {
-    SPOON, PAN, KITCHEN, CARTE, DI_SERVER, SCALE, OTHER;
+    SPOON, PAN, KITCHEN, CARTE, PENTAHO_SERVER, SCALE, OTHER;
     public String getID() {
       if ( this != OTHER ) {
         return this.name();
@@ -81,7 +74,7 @@ public class KettleClientEnvironment {
       ValueMetaPluginType.getInstance(),
       DatabasePluginType.getInstance(),
       ExtensionPointPluginType.getInstance(),
-      TwoWayPasswordEncoderPluginType.getInstance() ) );
+      TwoWayPasswordEncoderPluginType.getInstance(), ServiceProviderPluginType.getInstance() ) );
   }
 
   public static synchronized void init( List<PluginTypeInterface> pluginsToLoad ) throws KettleException {
@@ -146,8 +139,24 @@ public class KettleClientEnvironment {
       //
       createDefaultKettleProperties( directory );
     } catch ( Exception e ) {
-      // ignore - should likely propagate the error
+      System.err.println( e.getMessage() );
+    }
+  }
 
+  /**
+   * Creates the kettle home area, which is a directory containing a default kettle.properties file
+   */
+  public static void createKettleUserHome() {
+
+    // Try to create the directory...
+    //
+    String directory = Const.getKettleDirectory();
+    File dir = new File( directory );
+    try {
+      dir.mkdirs();
+
+    } catch ( Exception e ) {
+      System.err.println( e.getMessage() );
     }
   }
 

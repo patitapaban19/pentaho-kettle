@@ -1,34 +1,26 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.jsonoutput.analyzer;
 
-import com.google.common.cache.CacheBuilder;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.KettleClientEnvironment;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.row.RowMetaInterface;
@@ -42,21 +34,24 @@ import org.pentaho.metaverse.api.IMetaverseBuilder;
 import org.pentaho.metaverse.api.IMetaverseObjectFactory;
 import org.pentaho.metaverse.api.INamespace;
 import org.pentaho.metaverse.api.MetaverseObjectFactory;
-import org.pentaho.metaverse.api.analyzer.kettle.ExternalResourceCache;
 import org.pentaho.metaverse.api.model.IExternalResourceInfo;
-
-import org.powermock.reflect.Whitebox;
 
 import java.util.Collection;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
-@RunWith( MockitoJUnitRunner.class )
+@RunWith( MockitoJUnitRunner.StrictStubs.class )
 public class JsonOutputAnalyzerTest {
 
   private JsonOutputAnalyzer analyzer;
@@ -71,9 +66,8 @@ public class JsonOutputAnalyzerTest {
   private TransMeta transMeta;
   @Mock
   private RowMetaInterface mockRowMetaInterface;
-  @Mock
+
   private IMetaverseBuilder mockBuilder;
-  @Mock
   private INamespace mockNamespace;
 
   private IMetaverseObjectFactory mockFactory;
@@ -86,16 +80,21 @@ public class JsonOutputAnalyzerTest {
   @Before
   public void setUp() throws Exception {
 
+    mockBuilder = mock( IMetaverseBuilder.class );
+    mockNamespace = mock( INamespace.class );
     mockFactory = new MetaverseObjectFactory();
     when( mockBuilder.getMetaverseObjectFactory() ).thenReturn( mockFactory );
-    when( mockNamespace.getParentNamespace() ).thenReturn( mockNamespace );
+    lenient().when( mockNamespace.getParentNamespace() ).thenReturn( mockNamespace );
 
     analyzer = new JsonOutputAnalyzer() {};
     analyzer.setMetaverseBuilder( mockBuilder );
 
-    when( mockJsonOutput.getStepMetaInterface() ).thenReturn( meta );
-    when( mockJsonOutput.getStepMeta() ).thenReturn( mockStepMeta );
-    when( mockStepMeta.getStepMetaInterface() ).thenReturn( meta );
+    when( meta.getParentStepMeta() ).thenReturn( mockStepMeta );
+    when( transMeta.getBowl() ).thenReturn( DefaultBowl.getInstance() );
+
+    lenient().when( mockJsonOutput.getStepMetaInterface() ).thenReturn( meta );
+    lenient().when( mockJsonOutput.getStepMeta() ).thenReturn( mockStepMeta );
+    lenient().when( mockStepMeta.getStepMetaInterface() ).thenReturn( meta );
   }
 
   @Test
@@ -137,19 +136,17 @@ public class JsonOutputAnalyzerTest {
 
     when( meta.getParentStepMeta() ).thenReturn( spyMeta );
     when( spyMeta.getParentTransMeta() ).thenReturn( transMeta );
-    when( meta.getFileName() ).thenReturn( null );
     String[] outputFilePaths = new String[]{ "/path/to/file1", "/another/path/to/file2"};
-    when( meta.getFilePaths( true ) ).thenReturn( outputFilePaths );
-    when( meta.getFilePaths( false ) ).thenReturn( outputFilePaths );
+    when( meta.getFilePaths( anyBoolean() ) ).thenReturn( outputFilePaths );
     when( meta.writesToFile() ).thenReturn( false );
 
     assertFalse( consumer.isDataDriven( meta ) );
 
-    Collection<IExternalResourceInfo> resources = consumer.getResourcesFromMeta( meta );
+    Collection<IExternalResourceInfo> resources = consumer.getResourcesFromMeta( DefaultBowl.getInstance(), meta );
     assertTrue( resources.isEmpty() );
 
     when( meta.writesToFile() ).thenReturn( true );
-    resources = consumer.getResourcesFromMeta( meta );
+    resources = consumer.getResourcesFromMeta( DefaultBowl.getInstance(), meta );
     assertFalse( resources.isEmpty() );
     assertTrue( resources.stream().anyMatch( eri -> eri.getName().endsWith( outputFilePaths[0] ) ) );
     assertTrue( resources.stream().anyMatch( eri -> eri.getName().endsWith( outputFilePaths[1] ) ) );

@@ -1,27 +1,20 @@
 // CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.ui.trans.dialog;
+
 import java.util.ArrayList;
 
 import org.eclipse.swt.SWT;
@@ -71,6 +64,7 @@ import org.pentaho.di.repository.KettleRepositoryLostException;
 import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
+import org.pentaho.di.shared.DatabaseManagementInterface;
 import org.pentaho.di.trans.TransDependency;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.TransMeta.TransformationType;
@@ -90,6 +84,8 @@ import org.pentaho.di.ui.core.widget.FieldDisabledListener;
 import org.pentaho.di.ui.core.widget.TableView;
 import org.pentaho.di.ui.core.widget.TextVar;
 import org.pentaho.di.ui.repository.RepositoryDirectoryUI;
+import org.pentaho.di.ui.spoon.Spoon;
+import org.pentaho.di.ui.spoon.tree.provider.DBConnectionFolderProvider;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
 
 
@@ -914,7 +910,17 @@ public class TransDialog extends Dialog {
         getDatabaseDialog().setDatabaseMeta( databaseMeta );
 
         if ( getDatabaseDialog().open() != null ) {
-          transMeta.addDatabase( getDatabaseDialog().getDatabaseMeta() );
+          try {
+            DatabaseManagementInterface dbMgr =
+              Spoon.getInstance().getManagementBowl().getManager( DatabaseManagementInterface.class );
+            dbMgr.add( getDatabaseDialog().getDatabaseMeta() );
+            // Refresh left hand tree
+            Spoon.getInstance().refreshTree( DBConnectionFolderProvider.STRING_CONNECTIONS );
+          } catch ( KettleException dbe ) {
+            new ErrorDialog(
+              shell, BaseMessages.getString( PKG, "TransDialog.ErrorAddingDatabase.Title" ), BaseMessages
+                .getString( PKG, "TransDialog.ErrorAddingDatabase.Message" ), dbe );
+          }
           wLogconnection.add( getDatabaseDialog().getDatabaseMeta().getName() );
           wLogconnection.select( wLogconnection.getItemCount() - 1 );
         }
@@ -2173,7 +2179,6 @@ public class TransDialog extends Dialog {
     wUniqueConnections.setSelection( transMeta.isUsingUniqueConnections() );
     wShowFeedback.setSelection( transMeta.isFeedbackShown() );
     wFeedbackSize.setText( Integer.toString( transMeta.getFeedbackSize() ) );
-    wSharedObjectsFile.setText( Const.NVL( transMeta.getSharedObjectsFile(), "" ) );
     wManageThreads.setSelection( transMeta.isUsingThreadPriorityManagment() );
     wTransformationType.setText( transMeta.getTransformationType().getDescription() );
 
@@ -2311,7 +2316,6 @@ public class TransDialog extends Dialog {
 
     transMeta.setFeedbackShown( wShowFeedback.getSelection() );
     transMeta.setFeedbackSize( Const.toInt( wFeedbackSize.getText(), Const.ROWS_UPDATE ) );
-    transMeta.setSharedObjectsFile( wSharedObjectsFile.getText() );
     transMeta.setUsingThreadPriorityManagment( wManageThreads.getSelection() );
     transMeta.setTransformationType( TransformationType.values()[Const.indexOfString( wTransformationType
       .getText(), TransformationType.getTransformationTypesDescriptions() )] );

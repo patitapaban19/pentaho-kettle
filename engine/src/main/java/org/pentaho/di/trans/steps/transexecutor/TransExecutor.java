@@ -1,37 +1,28 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.transexecutor;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.ArrayList;
 import java.util.Map;
-import java.util.Arrays;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.ResultFile;
 import org.pentaho.di.core.RowMetaAndData;
@@ -40,6 +31,7 @@ import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.KettleLogStore;
 import org.pentaho.di.core.row.RowDataUtil;
 import org.pentaho.di.core.row.RowMeta;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.DelegationListener;
 import org.pentaho.di.trans.StepWithMappingMeta;
@@ -325,10 +317,10 @@ public class TransExecutor extends BaseStep implements StepInterface {
       String currentVariableToUpdate = (String) resolvingValuesMap.keySet().toArray()[i];
       boolean hasIncomingFieldValues = incomingFieldValues != null && !incomingFieldValues.isEmpty();
       try {
-        if ( i < fieldsToUse.size() && incomingFields.contains( fieldsToUse.get( i ) ) && hasIncomingFieldValues
-          && ( !Utils.isEmpty( Const.trim( incomingFieldValues.get( incomingFields.indexOf( fieldsToUse.get( i ) ) ) ) ) ) ) {
+        if ( i < fieldsToUse.size() && listContainsIgnoreCase( incomingFields,  fieldsToUse.get( i ) ) && hasIncomingFieldValues
+          && ( !Utils.isEmpty( Const.trim( incomingFieldValues.get( getIndexIgnoreCase( incomingFields, fieldsToUse.get( i ) ) ) ) ) ) ) {
           // if field to use is defined on previous steps ( incomingFields ) and is not empty - put that value
-          resolvingValuesMap.put( currentVariableToUpdate, incomingFieldValues.get( incomingFields.indexOf( fieldsToUse.get( i ) ) ) );
+          resolvingValuesMap.put( currentVariableToUpdate, incomingFieldValues.get( getIndexIgnoreCase( incomingFields, fieldsToUse.get( i ) ) ) );
         } else {
           if ( i < staticInputs.size() && !Utils.isEmpty( Const.trim( staticInputs.get( i ) ) ) ) {
             // if we do not have a field to use then check for static input values - if not empty - put that value
@@ -372,6 +364,34 @@ public class TransExecutor extends BaseStep implements StepInterface {
 
     StepWithMappingMeta
         .activateParams( trans, trans, this, trans.listParameters(), parameters.getVariable(), inputFieldValues, meta.getParameters().isInheritingAllVariables() );
+  }
+
+  /**
+   * Search through the provided list for a specified value while ignoring case
+   * @param list list of Strings to be searched
+   * @param value String to search for
+   * @return true if the value is found, false otherwise
+   */
+  private boolean listContainsIgnoreCase( final List<String> list, final String value ) {
+    return list.stream().anyMatch( s -> s.equalsIgnoreCase( value ) );
+  }
+
+  /**
+   * Get the index of the specified value in the list, ignoring case.  Should only be called
+   * after verifying that the value exists first using listContainsIgnoreCase!
+   * @param list list of Strings to be searched
+   * @param value String to search for
+   * @return the index of the value in the list if found, -1 if not found
+   */
+  private int getIndexIgnoreCase( final List<String> list, final String value ) {
+    for ( int i = 0; i < list.size(); i++ ) {
+      if ( list.get( i ).equalsIgnoreCase( value ) ) {
+        return i;
+      }
+    }
+    // THIS SHOULD NEVER HAPPEN BECAUSE WE SHOULD NEVER CALL THIS METHOD WITHOUT FIRST CHECKING FOR THE EXISTENCE OF
+    // THE VALUE WITH listContainsIgnoreCase FIRST!!!!
+    return -1;
   }
 
   @VisibleForTesting
@@ -507,7 +527,8 @@ public class TransExecutor extends BaseStep implements StepInterface {
 
   @VisibleForTesting
   TransMeta loadExecutorTransMeta() throws KettleException {
-    return TransExecutorMeta.loadMappingMeta( meta, meta.getRepository(), meta.getMetaStore(), this, meta.getParameters().isInheritingAllVariables() );
+    return TransExecutorMeta.loadMappingMeta( getTransMeta().getBowl(), meta, meta.getRepository(),
+      meta.getMetaStore(), this, meta.getParameters().isInheritingAllVariables() );
   }
 
   public void dispose( StepMetaInterface smi, StepDataInterface sdi ) {
@@ -568,6 +589,5 @@ public class TransExecutor extends BaseStep implements StepInterface {
       trans.initializeVariablesFrom( getTrans() );
     }
   }
-
 
 }

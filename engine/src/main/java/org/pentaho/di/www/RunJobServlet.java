@@ -1,35 +1,18 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.www;
-
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.util.Enumeration;
-import java.util.UUID;
-
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.exception.IdNotFoundException;
@@ -38,6 +21,8 @@ import org.pentaho.di.core.logging.KettleLogStore;
 import org.pentaho.di.core.logging.LogLevel;
 import org.pentaho.di.core.logging.LoggingObjectType;
 import org.pentaho.di.core.logging.SimpleLoggingObject;
+import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.variables.Variables;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.Job;
 import org.pentaho.di.job.JobAdapter;
@@ -48,6 +33,14 @@ import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryDirectory;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.Enumeration;
+import java.util.UUID;
 
 public class RunJobServlet extends BaseHttpServlet implements CartePluginInterface {
 
@@ -196,7 +189,8 @@ public class RunJobServlet extends BaseHttpServlet implements CartePluginInterfa
         return;
       }
 
-      final JobMeta jobMeta = loadJob( slaveServerRepository, transOption );
+      clearBowlCache( slaveServerRepository );
+      final JobMeta jobMeta = loadJob( slaveServerRepository, transOption, getPopulatedVariableSpaceFromRequest( request, new Variables() ) );
 
       // Set the servlet parameters as variables in the transformation
       //
@@ -245,11 +239,11 @@ public class RunJobServlet extends BaseHttpServlet implements CartePluginInterfa
 
       // Create the transformation and store in the list...
       //
-      final Job job = new Job( repository, jobMeta, servletLoggingObject );
+      final Job job = new Job( repository != null ? repository : slaveServerRepository, jobMeta, servletLoggingObject );
 
       // Setting variables
       //
-      job.initializeVariablesFrom( null );
+      job.initializeVariablesFrom( jobMeta.getBowl().getADefaultVariableSpace() );
       job.getJobMeta().setInternalKettleVariables( job );
       job.injectVariables( jobConfiguration.getJobExecutionConfiguration().getVariables() );
 
@@ -277,7 +271,9 @@ public class RunJobServlet extends BaseHttpServlet implements CartePluginInterfa
       //
       job.addJobListener( new JobAdapter() {
         public void jobFinished( Job job ) {
-          repository.disconnect();
+          if ( repository != null ) {
+            repository.disconnect();
+          }
         }
       } );
 
@@ -325,7 +321,7 @@ public class RunJobServlet extends BaseHttpServlet implements CartePluginInterfa
     job.start();
   }
 
-  private JobMeta loadJob( Repository repository, String job ) throws KettleException {
+  private JobMeta loadJob( Repository repository, String job, VariableSpace parentVariableSpace ) throws KettleException {
 
     if ( repository == null ) {
       throw new KettleException( "Repository required." );
@@ -351,7 +347,7 @@ public class RunJobServlet extends BaseHttpServlet implements CartePluginInterfa
 
         ObjectId jobID = repository.getJobId( name, directory );
 
-        JobMeta transJob = repository.loadJob( jobID, null );
+        JobMeta transJob = repository.loadJob( jobID, null, parentVariableSpace );
         return transJob;
       }
     }

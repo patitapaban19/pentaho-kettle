@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2017-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.ui.spoon.delegates;
 
 
@@ -52,13 +44,15 @@ import org.pentaho.di.ui.spoon.job.JobLogDelegate;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -92,6 +86,7 @@ public class SpoonJobDelegateTest {
   private JobLogTable jobLogTable;
   private JobMeta jobMeta;
   private ArrayList<JobMeta> jobMap;
+  private List<String> vars;
 
   @Before
   public void before() {
@@ -107,7 +102,9 @@ public class SpoonJobDelegateTest {
 
     doReturn( jobMap ).when( delegate ).getJobList();
     doReturn( spoon ).when( delegate ).getSpoon();
+    doCallRealMethod().when( delegate ).isDefaultJobName( any() );
     jobLogTable = mock( JobLogTable.class );
+    vars = new ArrayList<>();
   }
 
   @Test
@@ -141,6 +138,8 @@ public class SpoonJobDelegateTest {
     doReturn( jobExecutionConfigurationDialog ).when( delegate )
       .newJobExecutionConfigurationDialog( jobExecutionConfiguration, jobMeta );
     doReturn( activeJobGraph ).when( spoon ).getActiveJobGraph();
+    doReturn( new TransMeta[0] ).when( spoon ).getLoadedTransformations();
+    doReturn( new JobMeta[0] ).when( spoon ).getLoadedJobs();
     doReturn( MAP_WITH_TEST_VARIABLE ).when( jobExecutionConfiguration ).getVariables();
     doReturn( MAP_WITH_TEST_PARAM ).when( jobExecutionConfiguration ).getParams();
     doReturn( TEST_LOG_LEVEL ).when( jobExecutionConfiguration ).getLogLevel();
@@ -148,6 +147,9 @@ public class SpoonJobDelegateTest {
     doReturn( TEST_BOOLEAN_PARAM ).when( jobExecutionConfiguration ).isClearingLog();
     doReturn( TEST_BOOLEAN_PARAM ).when( jobExecutionConfiguration ).isSafeModeEnabled();
     doReturn( TEST_BOOLEAN_PARAM ).when( jobExecutionConfiguration ).isExpandingRemoteJob();
+    doReturn( EMPTY_STRING_ARRAY ).when( jobMeta ).listVariables();
+    doReturn( vars ).when( jobMeta ).getUsedVariables();
+    doReturn( "" ).when( jobMeta ).getVariable( anyString() );
 
     delegate.executeJob( jobMeta, true, false, null, false,
         null, 0 );
@@ -248,6 +250,17 @@ public class SpoonJobDelegateTest {
     assertNull( transMeta.getName() );
     assertEquals( Const.createFilename( directory, transname, "."
       + Const.STRING_TRANS_DEFAULT_EXT ), transMeta.getFilename() );
+  }
+
+  @Test
+  public void testDefaultJobName() {
+    assertTrue( delegate.isDefaultJobName( "Job" ) );
+    assertTrue( delegate.isDefaultJobName( "Job " ) );
+    assertTrue( delegate.isDefaultJobName( "Job 1" ) );
+    assertTrue( delegate.isDefaultJobName( "Job 2" ) );
+    assertFalse( delegate.isDefaultJobName( "Job1" ) );
+    assertFalse( delegate.isDefaultJobName( "Job  2" ) );
+    assertFalse( delegate.isDefaultJobName( "Job203" ) );
   }
 
   public interface PluginMockInterface extends ClassLoadingPluginInterface, PluginInterface {

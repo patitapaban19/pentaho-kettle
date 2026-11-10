@@ -1,28 +1,21 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.streaming.common;
 
 import com.google.common.base.Strings;
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.exception.KettleException;
@@ -85,7 +78,7 @@ public abstract class BaseStreamStepMeta extends StepWithMappingMeta implements 
   MappingMetaRetriever mappingMetaRetriever = TransExecutorMeta::loadMappingMeta;
 
   @FunctionalInterface interface MappingMetaRetriever {
-    TransMeta get( StepWithMappingMeta mappingMeta, Repository rep, IMetaStore metaStore, VariableSpace space )
+    TransMeta get( Bowl bowl, StepWithMappingMeta mappingMeta, Repository rep, IMetaStore metaStore, VariableSpace space )
       throws KettleException;
   }
 
@@ -205,7 +198,7 @@ public abstract class BaseStreamStepMeta extends StepWithMappingMeta implements 
     }
 
     try {
-      TransMeta subMeta = mappingMetaRetriever.get( this, repository, metaStore, space );
+      TransMeta subMeta = mappingMetaRetriever.get( transMeta.getBowl(), this, repository, metaStore, space );
       if ( !StringUtil.isEmpty( getSubStep() ) ) {
         String realSubStepName = space.environmentSubstitute( getSubStep() );
 
@@ -252,18 +245,18 @@ public abstract class BaseStreamStepMeta extends StepWithMappingMeta implements 
     return new boolean[] { !Utils.isEmpty( transformationPath ) };
   }
 
-  @Override public Object loadReferencedObject( int index, Repository rep, IMetaStore metaStore, VariableSpace space )
-    throws KettleException {
-    return loadMappingMeta( this, rep, metaStore, space );
+  @Override public Object loadReferencedObject( Bowl bowl, int index, Repository rep, IMetaStore metaStore,
+    VariableSpace space ) throws KettleException {
+    return loadMappingMeta( bowl, this, rep, metaStore, space );
   }
 
   public abstract RowMeta getRowMeta( String origin, VariableSpace space ) throws KettleStepException;
 
-  @Override public void getFields( RowMetaInterface rowMeta, String origin, RowMetaInterface[] info, StepMeta nextStep,
-                                   VariableSpace space, Repository repository, IMetaStore metaStore )
+  @Override public void getFields( Bowl bowl, RowMetaInterface rowMeta, String origin, RowMetaInterface[] info,
+    StepMeta nextStep, VariableSpace space, Repository repository, IMetaStore metaStore )
     throws KettleStepException {
     try {
-      TransMeta transMeta = mappingMetaRetriever.get( this, repository, metaStore, space );
+      TransMeta transMeta = mappingMetaRetriever.get( bowl, this, repository, metaStore, space );
       if ( !StringUtil.isEmpty( getSubStep() ) ) {
         String realSubStepName = space.environmentSubstitute( getSubStep() );
         if ( transMeta.getSteps().stream().anyMatch( stepMeta -> stepMeta.getName().equals( realSubStepName ) ) ) {
@@ -274,7 +267,7 @@ public abstract class BaseStreamStepMeta extends StepWithMappingMeta implements 
             {
               try {
                 stepMeta.getStepMetaInterface()
-                  .getFields( rowMeta, origin, info, nextStep, space, repository, metaStore );
+                  .getFields( bowl, rowMeta, origin, info, nextStep, space, repository, metaStore );
               } catch ( KettleStepException e ) {
                 throw new RuntimeException( e );
               }

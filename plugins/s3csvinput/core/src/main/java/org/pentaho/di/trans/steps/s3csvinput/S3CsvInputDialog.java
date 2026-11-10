@@ -1,31 +1,22 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.trans.steps.s3csvinput;
 
 import java.io.IOException;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.text.DecimalFormat;
 
 import com.amazonaws.services.s3.model.Bucket;
 import org.eclipse.swt.SWT;
@@ -62,9 +53,7 @@ import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.TransPreviewFactory;
 import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDialogInterface;
-import org.pentaho.di.trans.steps.textfileinput.TextFileInput;
 import org.pentaho.di.trans.steps.textfileinput.TextFileInputField;
-import org.pentaho.di.trans.steps.textfileinput.TextFileInputMeta;
 import org.pentaho.di.ui.core.dialog.EnterNumberDialog;
 import org.pentaho.di.ui.core.dialog.EnterSelectionDialog;
 import org.pentaho.di.ui.core.dialog.EnterTextDialog;
@@ -770,37 +759,9 @@ public class S3CsvInputDialog extends BaseStepDialog implements StepDialogInterf
 
       InputStreamReader reader = new InputStreamReader( inputStream );
 
-      // Read a line of data to determine the number of rows...
-      //
-      String line = TextFileInput.getLine( log, reader, TextFileInputMeta.FILE_FORMAT_MIXED, new StringBuilder( 1000 ) );
-
-      // Split the string, header or data into parts...
-      //
-      String[] fieldNames = Const.splitString( line, meta.getDelimiter() );
-
-      if ( !meta.isHeaderPresent() ) {
-        // Don't use field names from the header...
-        // Generate field names F1 ... F10
-        //
-        DecimalFormat df = new DecimalFormat( "000" ); // $NON-NLS-1$
-        for ( int i = 0; i < fieldNames.length; i++ ) {
-          fieldNames[i] = "Field_" + df.format( i ); // $NON-NLS-1$
-        }
-      } else {
-        if ( !Utils.isEmpty( meta.getEnclosure() ) ) {
-          for ( int i = 0; i < fieldNames.length; i++ ) {
-            if ( fieldNames[i].startsWith( meta.getEnclosure() ) && fieldNames[i].endsWith( meta.getEnclosure() ) && fieldNames[i].length() > 1 ) {
-              fieldNames[i] = fieldNames[i].substring( 1, fieldNames[i].length() - 1 );
-            }
-          }
-        }
-      }
-
-      // Trim the names to make sure...
-      //
-      for ( int i = 0; i < fieldNames.length; i++ ) {
-        fieldNames[i] = Const.trim( fieldNames[i] );
-      }
+      // Extract field names from CSV
+      S3CsvInputHelper helper = new S3CsvInputHelper();
+      String[] fieldNames = helper.extractFieldNamesFromCsv( reader, meta );
 
       // Update the GUI
       //

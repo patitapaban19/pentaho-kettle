@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.concatfields;
 
@@ -29,6 +21,7 @@ import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.annotations.Step;
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.util.StringUtil;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.database.DatabaseMeta;
@@ -49,11 +42,13 @@ import org.pentaho.di.resource.ResourceNamingInterface;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
+import org.pentaho.di.trans.step.StepHelperInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInjectionInterface;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.di.trans.steps.textfileoutput.TextFileField;
+import org.pentaho.di.trans.steps.textfileoutput.TextFileOutputData;
 import org.pentaho.di.trans.steps.textfileoutput.TextFileOutputMeta;
 import org.pentaho.metastore.api.IMetaStore;
 import org.w3c.dom.Node;
@@ -121,20 +116,20 @@ public class ConcatFieldsMeta extends TextFileOutputMeta implements StepMetaInte
   }
 
   @Deprecated
-  public void getFieldsModifyInput( RowMetaInterface row, String name, RowMetaInterface[] info, StepMeta nextStep,
-                                    VariableSpace space ) throws KettleStepException {
-    getFieldsModifyInput( row, name, info, nextStep, space, null, null );
+  public void getFieldsModifyInput( Bowl bowl, RowMetaInterface row, String name, RowMetaInterface[] info,
+                                    StepMeta nextStep, VariableSpace space ) throws KettleStepException {
+    getFieldsModifyInput( bowl, row, name, info, nextStep, space, null, null );
   }
 
-  public void getFieldsModifyInput( RowMetaInterface row, String name, RowMetaInterface[] info, StepMeta nextStep,
-                                    VariableSpace space, Repository repository, IMetaStore metaStore )
+  public void getFieldsModifyInput( Bowl bowl, RowMetaInterface row, String name, RowMetaInterface[] info,
+                                    StepMeta nextStep, VariableSpace space, Repository repository, IMetaStore metaStore )
     throws KettleStepException {
     // the field precisions and lengths are altered! see TextFileOutputMeta.getFields().
-    super.getFields( row, name, info, nextStep, space, repository, metaStore );
+    super.getFields( bowl, row, name, info, nextStep, space, repository, metaStore );
   }
 
   @Override
-  public void getFields( RowMetaInterface row, String name, RowMetaInterface[] info, StepMeta nextStep,
+  public void getFields( Bowl bowl, RowMetaInterface row, String name, RowMetaInterface[] info, StepMeta nextStep,
                          VariableSpace space, Repository repository, IMetaStore metaStore ) throws KettleStepException {
     // do not call the super class from TextFileOutputMeta since it modifies the source meta data
     // see getFieldsModifyInput() instead
@@ -325,15 +320,67 @@ public class ConcatFieldsMeta extends TextFileOutputMeta implements StepMetaInte
    * @return Always <code>null</code>
    */
   @Override
-  public String exportResources( VariableSpace space, Map<String, ResourceDefinition> definitions,
-                                 ResourceNamingInterface resourceNamingInterface, Repository repository,
-                                 IMetaStore metaStore )
-    throws KettleException {
+  public String exportResources( Bowl executionBowl, Bowl globalManagementBowl, VariableSpace space,
+      Map<String, ResourceDefinition> definitions, ResourceNamingInterface namingInterface,
+      Repository repository, IMetaStore metaStore ) throws KettleException {
     return null;
   }
 
   @Override
   public StepMetaInjectionInterface getStepMetaInjectionInterface() {
     return new ConcatFieldsMetaInjection( this );
+  }
+
+  @Override
+  protected void calcMetaWithFieldOptions( TextFileOutputData data ) {
+    super.calcMetaWithFieldOptions( data );
+  }
+
+  /**
+   * <p>Creates a copy of the meta information of the modified input fields, so that we don't make any changes to the
+   * original meta information.</p>
+   * <p>It is based on the original meta information and augmented with the information the user configured.</p>
+   *
+   * @param data
+   */
+  protected synchronized void calcMetaWithFieldOptions( ConcatFieldsData data ) {
+    if ( null == metaWithFieldOptions ) {
+      if ( !Utils.isEmpty( getOutputFields() ) ) {
+        metaWithFieldOptions = new ValueMetaInterface[ getOutputFields().length ];
+
+        for ( int i = 0; i < getOutputFields().length; ++i ) {
+          ValueMetaInterface v = data.inputRowMetaModified.getValueMeta( data.fieldnrs[ i ] );
+
+          if ( v != null ) {
+            metaWithFieldOptions[ i ] = v.clone();
+
+            TextFileField field = getOutputFields()[ i ];
+            metaWithFieldOptions[ i ].setLength( field.getLength() );
+            metaWithFieldOptions[ i ].setPrecision( field.getPrecision() );
+            if ( !Utils.isEmpty( field.getFormat() ) ) {
+              metaWithFieldOptions[ i ].setConversionMask( field.getFormat() );
+            }
+            metaWithFieldOptions[ i ].setDecimalSymbol( field.getDecimalSymbol() );
+            metaWithFieldOptions[ i ].setGroupingSymbol( field.getGroupingSymbol() );
+            metaWithFieldOptions[ i ].setCurrencySymbol( field.getCurrencySymbol() );
+            metaWithFieldOptions[ i ].setTrimType( field.getTrimType() );
+            if ( !Utils.isEmpty( getEncoding() ) ) {
+              metaWithFieldOptions[ i ].setStringEncoding( getEncoding() );
+            }
+
+            // enable output padding by default to be compatible with v2.5.x
+            //
+            metaWithFieldOptions[ i ].setOutputPaddingEnabled( true );
+          }
+        }
+      } else {
+        metaWithFieldOptions = null;
+      }
+    }
+  }
+
+  @Override
+  public StepHelperInterface getStepHelperInterface() {
+    return new ConcatFieldsHelper();
   }
 }

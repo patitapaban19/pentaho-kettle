@@ -1,46 +1,44 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.tableinput;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.json.simple.JSONObject;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.RowMetaAndData;
 import org.pentaho.di.core.RowSet;
 import org.pentaho.di.core.database.Database;
+import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.logging.LoggingObjectInterface;
+import org.pentaho.di.core.logging.LoggingObjectType;
+import org.pentaho.di.core.logging.SimpleLoggingObject;
 import org.pentaho.di.core.row.RowDataUtil;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
-import org.pentaho.di.trans.step.BaseStep;
+import org.pentaho.di.trans.step.BaseDatabaseStep;
 import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
@@ -52,7 +50,7 @@ import org.pentaho.di.trans.step.StepMetaInterface;
  * @author Matt
  * @since 8-apr-2003
  */
-public class TableInput extends BaseStep implements StepInterface {
+public class TableInput extends BaseDatabaseStep implements StepInterface {
   private static Class<?> PKG = TableInputMeta.class; // for i18n purposes, needed by Translator2!!
 
   private final ReentrantLock dbLock = new ReentrantLock();
@@ -99,6 +97,7 @@ public class TableInput extends BaseStep implements StepInterface {
   public boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
     dbLock.lock();
     try {
+
       if ( first ) { // we just got started
 
         Object[] parameters;
@@ -287,11 +286,8 @@ public class TableInput extends BaseStep implements StepInterface {
         setErrors( 1 );
         stopAll();
       } finally {
-        if ( data.db != null ) {
-          data.db.disconnect();
-        }
+        super.dispose( smi, sdi );
       }
-      super.dispose( smi, sdi );
     } finally {
       dbLock.unlock();
     }
@@ -327,58 +323,27 @@ public class TableInput extends BaseStep implements StepInterface {
 
       if ( super.init( smi, sdi ) ) {
         // Verify some basic things first...
-        //
-        boolean passed = true;
         if ( Utils.isEmpty( meta.getSQL() ) ) {
           logError( BaseMessages.getString( PKG, "TableInput.Exception.SQLIsNeeded" ) );
-          passed = false;
-        }
-
-        if ( meta.getDatabaseMeta() == null ) {
-          logError( BaseMessages.getString( PKG, "TableInput.Exception.DatabaseConnectionsIsNeeded" ) );
-          passed = false;
-        }
-        if ( !passed ) {
           return false;
         }
-
         data.infoStream = meta.getStepIOMeta().getInfoStreams().get( 0 );
-        if ( meta.getDatabaseMeta() == null ) {
-          logError( BaseMessages.getString( PKG, "TableInput.Init.ConnectionMissing", getStepname() ) );
-          return false;
-        }
-        data.db = new Database( this, meta.getDatabaseMeta() );
-        data.db.shareVariablesWith( this );
-
         data.db.setQueryLimit( Const.toInt( environmentSubstitute( meta.getRowLimit() ), 0 ) );
 
-        try {
-          if ( getTransMeta().isUsingUniqueConnections() ) {
-            synchronized ( getTrans() ) {
-              data.db.connect( getTrans().getTransactionId(), getPartitionID() );
-            }
-          } else {
-            data.db.connect( getPartitionID() );
-          }
-
-          if ( meta.getDatabaseMeta().isRequiringTransactionsOnQueries() ) {
-            data.db.setCommit( 100 ); // needed for PGSQL it seems...
-          }
-          if ( log.isDetailed() ) {
-            logDetailed( BaseMessages.getString( PKG, "TableInput.Log.ConnectedToDatabase" ) );
-          }
-          return true;
-        } catch ( KettleException e ) {
-          logError( BaseMessages.getString( PKG, "TableInput.Log.ErrorOccurred", e.getMessage() ) );
-          setErrors( 1 );
-          stopAll();
+        if ( meta.getDatabaseMeta().isRequiringTransactionsOnQueries() ) {
+          data.db.setCommitSize( 100 ); // needed for PGSQL it seems...
         }
+        return true;
       }
-
       return false;
     } finally {
       dbLock.unlock();
     }
+  }
+
+  @Override
+  protected Class<?> getPKG() {
+    return PKG;
   }
 
   public boolean isWaitingForData() {

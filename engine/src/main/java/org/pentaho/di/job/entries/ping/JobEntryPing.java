@@ -1,29 +1,18 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2017 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
-package org.pentaho.di.job.entries.ping;
 
-import org.pentaho.di.job.entry.validator.AndValidator;
-import org.pentaho.di.job.entry.validator.JobEntryValidatorUtils;
+
+package org.pentaho.di.job.entries.ping;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -34,18 +23,20 @@ import java.util.List;
 import org.pentaho.di.cluster.SlaveServer;
 import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.exception.KettleXMLException;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.JobMeta;
 import org.pentaho.di.job.entry.JobEntryBase;
 import org.pentaho.di.job.entry.JobEntryInterface;
+import org.pentaho.di.job.entry.validator.AndValidator;
+import org.pentaho.di.job.entry.validator.JobEntryValidatorUtils;
 import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.resource.ResourceEntry;
@@ -66,7 +57,9 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
 
   private String hostname;
   private String timeout;
-  public String defaultTimeOut = "3000";
+  private static final String DEFAULT_TIMEOUT_MS = "3000";
+  private static final String DEFAULT_PACKETS = "2";
+  private static final String ERROR_LABEL = "JobPing.Error.Label";
   private String nbrPackets;
   private String Windows_CHAR = "-n";
   private String NIX_CHAR = "-c";
@@ -85,8 +78,8 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
     super( n, "" );
     pingtype = classicPing;
     hostname = null;
-    nbrPackets = "2";
-    timeout = defaultTimeOut;
+    nbrPackets = DEFAULT_PACKETS;
+    timeout = DEFAULT_TIMEOUT_MS;
   }
 
   public JobEntryPing() {
@@ -198,6 +191,27 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
     }
   }
 
+  public static boolean isPositiveInteger( String strNum ) {
+    boolean result = true;
+    if ( strNum == null ) {
+      result = false;
+    } else {
+      try {
+        int value = Integer.parseInt( strNum.trim() );
+        if ( value <= 0 ) {
+          result = false;
+        }
+      } catch ( NumberFormatException nfe ) {
+        result = false;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Returns the configured value without resolving variables or changing the saved metadata.
+   * @return nbrPackets
+   */
   public String getNbrPackets() {
     return nbrPackets;
   }
@@ -222,12 +236,32 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
     return environmentSubstitute( getHostname() );
   }
 
+  /**
+   * Returns the configured value without resolving variables or changing the saved metadata.
+   * @return timeout
+   */
   public String getTimeOut() {
     return timeout;
   }
 
   public String getRealTimeOut() {
     return environmentSubstitute( getTimeOut() );
+  }
+
+  // Validate only after substitution, without changing the persisted configuration.
+  private int resolvePositiveInt( String configured, String labelKey ) throws KettleException {
+    String realValue = environmentSubstitute( configured );
+    String errorMessage = BaseMessages.getString( PKG, "JobPing.ErrorOnlyPositiveInteger",
+      BaseMessages.getString( PKG, labelKey ), realValue );
+    try {
+      int value = Integer.parseInt( realValue == null ? "" : realValue.trim() );
+      if ( value > 0 ) {
+        return value;
+      }
+    } catch ( NumberFormatException ex ) {
+      throw new KettleException( errorMessage, ex );
+    }
+    throw new KettleException( errorMessage );
   }
 
   public void setTimeOut( String timeout ) {
@@ -240,9 +274,21 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
     result.setNrErrors( 1 );
     result.setResult( false );
 
+    int timeoutInt = 0;
+    int packets = 0;
+    try {
+      if ( ipingtype == isystemPing || ipingtype == ibothPings ) {
+        timeoutInt = resolvePositiveInt( getTimeOut(), "JobPing.TimeOut.Label" );
+      }
+      if ( ipingtype == iclassicPing || ipingtype == ibothPings ) {
+        packets = resolvePositiveInt( getNbrPackets(), "JobPing.NrPackets.Label" );
+      }
+    } catch ( KettleException ex ) {
+      logError( BaseMessages.getString( PKG, ERROR_LABEL ) + ex.getMessage() );
+      return result;
+    }
+
     String hostname = getRealHostname();
-    int timeoutInt = Const.toInt( getRealTimeOut(), 300 );
-    int packets = Const.toInt( getRealNbrPackets(), 2 );
     boolean status = false;
 
     if ( Utils.isEmpty( hostname ) ) {
@@ -255,42 +301,38 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
       if ( ipingtype == isystemPing || ipingtype == ibothPings ) {
         // Perform a system (Java) ping ...
         status = systemPing( hostname, timeoutInt );
-        if ( status ) {
-          if ( log.isDetailed() ) {
-            log.logDetailed( BaseMessages.getString( PKG, "JobPing.SystemPing" ), BaseMessages.getString(
-              PKG, "JobPing.OK.Label", hostname ) );
-          }
-        } else {
-          log.logError( BaseMessages.getString( PKG, "JobPing.SystemPing" ), BaseMessages.getString(
-            PKG, "JobPing.NOK.Label", hostname ) );
-        }
+        logPingResult( status, "JobPing.SystemPing", hostname );
       }
       if ( ( ipingtype == iclassicPing ) || ( ipingtype == ibothPings && !status ) ) {
         // Perform a classic ping ..
         status = classicPing( hostname, packets );
-        if ( status ) {
-          if ( log.isDetailed() ) {
-            log.logDetailed( BaseMessages.getString( PKG, "JobPing.ClassicPing" ), BaseMessages.getString(
-              PKG, "JobPing.OK.Label", hostname ) );
-          }
-        } else {
-          log.logError( BaseMessages.getString( PKG, "JobPing.ClassicPing" ), BaseMessages.getString(
-            PKG, "JobPing.NOK.Label", hostname ) );
-        }
+        logPingResult( status, "JobPing.ClassicPing", hostname );
       }
     } catch ( Exception ex ) {
-      logError( BaseMessages.getString( PKG, "JobPing.Error.Label" ) + ex.getMessage() );
+      logError( BaseMessages.getString( PKG, ERROR_LABEL ) + ex.getMessage() );
     }
+    if ( !status ) {
+      logError( BaseMessages.getString( PKG, "JobPing.NOK.Label", hostname ) );
+      return result;
+    }
+    if ( log.isDetailed() ) {
+      logDetailed( BaseMessages.getString( PKG, "JobPing.OK.Label", hostname ) );
+    }
+    result.setNrErrors( 0 );
+    result.setResult( true );
+    return result;
+  }
+
+  private void logPingResult( boolean status, String pingTypeKey, String hostname ) {
     if ( status ) {
       if ( log.isDetailed() ) {
-        logDetailed( BaseMessages.getString( PKG, "JobPing.OK.Label", hostname ) );
+        log.logDetailed( BaseMessages.getString( PKG, pingTypeKey ), BaseMessages.getString(
+          PKG, "JobPing.OK.Label", hostname ) );
       }
-      result.setNrErrors( 0 );
-      result.setResult( true );
     } else {
-      logError( BaseMessages.getString( PKG, "JobPing.NOK.Label", hostname ) );
+      log.logError( BaseMessages.getString( PKG, pingTypeKey ), BaseMessages.getString(
+        PKG, "JobPing.NOK.Label", hostname ) );
     }
-    return result;
   }
 
   public boolean evaluates() {
@@ -358,7 +400,7 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
         retval = true;
       }
     } catch ( IOException ex ) {
-      logError( BaseMessages.getString( PKG, "JobPing.Error.Label" ) + ex.getMessage() );
+      logError( BaseMessages.getString( PKG, ERROR_LABEL ) + ex.getMessage() );
     }
     return retval;
   }
@@ -377,7 +419,7 @@ public class JobEntryPing extends JobEntryBase implements Cloneable, JobEntryInt
   @Override
   public void check( List<CheckResultInterface> remarks, JobMeta jobMeta, VariableSpace space,
     Repository repository, IMetaStore metaStore ) {
-    JobEntryValidatorUtils.andValidator().validate( this, "hostname", remarks,
+    JobEntryValidatorUtils.andValidator().validate( jobMeta.getBowl(), this, "hostname", remarks,
         AndValidator.putValidators( JobEntryValidatorUtils.notBlankValidator() ) );
   }
 

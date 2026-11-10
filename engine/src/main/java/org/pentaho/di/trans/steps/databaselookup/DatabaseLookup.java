@@ -1,34 +1,27 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.databaselookup;
 
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.row.value.ValueMetaBase;
-import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.database.Database;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleDatabaseException;
@@ -38,8 +31,10 @@ import org.pentaho.di.core.row.RowDataUtil;
 import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
+import org.pentaho.di.core.row.value.ValueMetaBase;
 import org.pentaho.di.core.row.value.ValueMetaFactory;
 import org.pentaho.di.core.row.value.ValueMetaString;
+import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
@@ -49,8 +44,6 @@ import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
 import org.pentaho.di.trans.steps.databaselookup.readallcache.ReadAllCache;
-
-import com.google.common.annotations.VisibleForTesting;
 
 /**
  * Looks up values in a database using keys from input streams.
@@ -98,7 +91,7 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
 
         //If input is of type date and its mask does not contain time then we should trim the time part from the date
         //otherwise we will clog the database lookup cache with to many entries
-        if ( input.getType() == ValueMetaInterface.TYPE_DATE && isTimelessMask( input.getConversionMask() ) ) {
+        if ( lookupRow[lookupIndex] != null && input.getType() == ValueMetaInterface.TYPE_DATE && isTimelessMask( input.getConversionMask() ) ) {
           lookupRow[lookupIndex] = Const.trimDate( (Date) lookupRow[lookupIndex] );
         }
 
@@ -120,7 +113,7 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
     }
 
     Object[] add;
-    boolean cache_now = false;
+    boolean cacheNow = false;
     boolean cacheHit = false;
 
     // First, check if we looked up before
@@ -133,23 +126,20 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
       add = null;
     }
 
-    if ( add == null ) {
-      if ( !( meta.isCached() && meta.isLoadingAllDataInCache() ) || data.hasDBCondition ) { // do not go to the
-        // database when all rows
-        // are in (exception LIKE
-        // operator)
-        if ( log.isRowLevel() ) {
-          logRowlevel( BaseMessages.getString( PKG, "DatabaseLookup.Log.AddedValuesToLookupRow1" )
-            + meta.getStreamKeyField1().length
-            + BaseMessages.getString( PKG, "DatabaseLookup.Log.AddedValuesToLookupRow2" )
-            + data.lookupMeta.getString( lookupRow ) );
-        }
-
-        data.db.setValuesLookup( data.lookupMeta, lookupRow );
-        add = data.db.getLookup( meta.isFailingOnMultipleResults() );
-        cache_now = true;
+    if ( add == null && ( !( meta.isCached() && meta.isLoadingAllDataInCache() ) || data.hasDBCondition ) ) {
+      // do not go to the database when all rows are in (exception LIKE operator)
+      if ( log.isRowLevel() ) {
+        logRowlevel( BaseMessages.getString( PKG, "DatabaseLookup.Log.AddedValuesToLookupRow1" )
+          + meta.getStreamKeyField1().length
+          + BaseMessages.getString( PKG, "DatabaseLookup.Log.AddedValuesToLookupRow2" )
+          + data.lookupMeta.getString( lookupRow ) );
       }
+
+      data.db.setValuesLookup( data.lookupMeta, lookupRow );
+      add = data.db.getLookup( meta.isFailingOnMultipleResults() );
+      cacheNow = true;
     }
+
 
     if ( add == null ) { // nothing was found, unknown code: add default values
       if ( meta.isEatingRowOnLookupFailure() ) {
@@ -205,7 +195,7 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
     // Store in cache if we need to!
     // If we already loaded all data into the cache, storing more makes no sense.
     //
-    if ( meta.isCached() && cache_now && !meta.isLoadingAllDataInCache() && data.allEquals ) {
+    if ( meta.isCached() && cacheNow && !meta.isLoadingAllDataInCache() && data.allEquals ) {
       data.cache.storeRowInCache( meta, data.lookupMeta, lookupRow, add );
     }
 
@@ -369,7 +359,8 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
 
       // create the output metadata
       data.outputRowMeta = getInputRowMeta().clone();
-      meta.getFields( data.outputRowMeta, getStepname(), null, null, this, repository, metaStore );
+      meta.getFields( getTransMeta().getBowl(), data.outputRowMeta, getStepname(), null, null, this, repository,
+        metaStore );
 
       data.db.setLookup(
         environmentSubstitute( meta.getSchemaName() ), environmentSubstitute( meta.getTablename() ),
@@ -430,7 +421,6 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
       if ( meta.isCached() && meta.isLoadingAllDataInCache() ) {
         loadAllTableDataIntoTheCache();
       }
-
     }
 
     if ( log.isRowLevel() ) {
@@ -450,8 +440,10 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
           logRowlevel( BaseMessages.getString( PKG, "DatabaseLookup.Log.WroteRowToNextStep" )
             + getInputRowMeta().getString( r ) );
         }
-        if ( checkFeedback( getLinesRead() ) ) {
-          logBasic( "linenr " + getLinesRead() );
+
+        long linesRead = getLinesRead();
+        if ( checkFeedback( linesRead ) ) {
+          logBasic( "linenr " + linesRead );
         }
       }
     } catch ( KettleException e ) {
@@ -473,83 +465,82 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
   private void loadAllTableDataIntoTheCache() throws KettleException {
     DatabaseMeta dbMeta = meta.getDatabaseMeta();
 
-    Database db = getDatabase( dbMeta );
-    connectDatabase( db );
+    try ( Database db = getDatabase( dbMeta ) ) {
+      connectDatabase( db );
 
-    try {
       // We only want to get the used table fields...
       //
-      String sql = "SELECT ";
+      StringBuilder sql = new StringBuilder( "SELECT " );
 
       for ( int i = 0; i < meta.getStreamKeyField1().length; i++ ) {
         if ( i > 0 ) {
-          sql += ", ";
+          sql.append( ", " );
         }
-        sql += dbMeta.quoteField( meta.getTableKeyField()[ i ] );
+        sql.append( dbMeta.quoteField( meta.getTableKeyField()[ i ] ) );
       }
 
       // Also grab the return field...
       //
       for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
-        sql += ", " + dbMeta.quoteField( meta.getReturnValueField()[ i ] );
+        sql.append( ", " ).append( dbMeta.quoteField( meta.getReturnValueField()[ i ] ) );
       }
       // The schema/table
       //
-      sql += " FROM "
-        + dbMeta.getQuotedSchemaTableCombination(
-          environmentSubstitute( meta.getSchemaName() ),
-          environmentSubstitute( meta.getTablename() ) );
+      sql.append( " FROM " ).append(
+        dbMeta.getQuotedSchemaTableCombination( environmentSubstitute( meta.getSchemaName() ),
+          environmentSubstitute( meta.getTablename() ) ) );
 
       // order by?
-      if ( meta.getOrderByClause() != null && meta.getOrderByClause().length() != 0 ) {
-        sql += " ORDER BY " + meta.getOrderByClause();
+      if ( !Utils.isEmpty( meta.getOrderByClause() ) ) {
+        sql.append( " ORDER BY " ).append( meta.getOrderByClause() );
       }
 
       // Now that we have the SQL constructed, let's store the rows...
       //
-      List<Object[]> rows = db.getRows( sql, 0 );
-      if ( rows != null && rows.size() > 0 ) {
-        if ( data.allEquals ) {
-          putToDefaultCache( db, rows );
-        } else {
-          putToReadOnlyCache( db, rows );
-        }
+
+      if ( data.allEquals ) {
+        putToDefaultCache( db, sql.toString() );
+      } else {
+        putToReadOnlyCache( db, db.getRows( sql.toString(), 0 ) );
       }
     } catch ( Exception e ) {
       throw new KettleException( e );
-    } finally {
-      if ( db != null ) {
-        db.disconnect();
-      }
     }
   }
 
-  private void putToDefaultCache( Database db, List<Object[]> rows ) {
+  private void putToDefaultCache( Database db, String sql ) throws KettleDatabaseException {
     final int keysAmount = meta.getStreamKeyField1().length;
-    RowMetaInterface prototype = copyValueMetasFrom( db.getReturnRowMeta(), keysAmount );
+    AtomicReference<RowMetaInterface> prototype = new AtomicReference<>();
+    AtomicBoolean firstRow = new AtomicBoolean( true );
 
+    db.forEachRow( sql, 0, row -> {
+      if ( firstRow.get() ) {
+        // Assume that all rows have the same meta; let's reuse it for all rows
+        prototype.set( copyValueMetasFrom( db.getReturnRowMeta(), keysAmount ) );
+        firstRow.set( false );
+      }
+      putRowToDefaultCache( prototype.get(), keysAmount, row );
+    } );
+  }
+
+  private void putRowToDefaultCache( RowMetaInterface keyMeta, int keysAmount, Object[] row ) {
     // Copy the data into 2 parts: key and value...
     //
-    for ( Object[] row : rows ) {
-      int index = 0;
-      // not sure it is efficient to re-create the same on every row,
-      // but this was done earlier, so I'm keeping this behaviour
-      RowMetaInterface keyMeta = prototype.clone();
-      Object[] keyData = new Object[ keysAmount ];
-      for ( int i = 0; i < keysAmount; i++ ) {
-        keyData[ i ] = row[ index++ ];
-      }
-      // RowMeta valueMeta = new RowMeta();
-      Object[] valueData = new Object[ data.returnMeta.size() ];
-      for ( int i = 0; i < data.returnMeta.size(); i++ ) {
-        valueData[ i ] = row[ index++ ];
-        // valueMeta.addValueMeta(returnRowMeta.getValueMeta(index++));
-      }
-      // Store the data...
-      //
-      data.cache.storeRowInCache( meta, keyMeta, keyData, valueData );
-      incrementLinesInput();
+    int index = 0;
+    Object[] keyData = new Object[ keysAmount ];
+    for ( int i = 0; i < keysAmount; i++ ) {
+      keyData[ i ] = row[ index++ ];
     }
+
+    Object[] valueData = new Object[ data.returnMeta.size() ];
+    for ( int i = 0; i < data.returnMeta.size(); i++ ) {
+      valueData[ i ] = row[ index++ ];
+    }
+
+    // Store the data...
+    //
+    data.cache.storeRowInCache( meta, keyMeta, keyData, valueData );
+    incrementLinesInput();
   }
 
   private RowMetaInterface copyValueMetasFrom( RowMetaInterface source, int n ) {
@@ -639,7 +630,7 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
         logError( BaseMessages.getString( PKG, "DatabaseLookup.ERROR0004.UnexpectedErrorDuringInit" )
           + e.toString() );
         if ( data.db != null ) {
-          data.db.disconnect();
+          data.db.close();
         }
       }
     }
@@ -652,7 +643,7 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
     data = (DatabaseLookupData) sdi;
 
     if ( data.db != null ) {
-      data.db.disconnect();
+      data.db.close();
     }
 
     // Recover memory immediately, allow in-memory data to be garbage collected

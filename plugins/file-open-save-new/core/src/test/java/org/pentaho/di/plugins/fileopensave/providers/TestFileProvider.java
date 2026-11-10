@@ -1,30 +1,27 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.plugins.fileopensave.providers;
 
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.exception.KettleFileException;
+import org.pentaho.di.plugins.fileopensave.api.overwrite.OverwriteStatus;
 import org.pentaho.di.plugins.fileopensave.api.providers.BaseFileProvider;
 import org.pentaho.di.plugins.fileopensave.api.providers.File;
 import org.pentaho.di.plugins.fileopensave.api.providers.Tree;
+import org.pentaho.di.plugins.fileopensave.api.providers.Utils;
 import org.pentaho.di.plugins.fileopensave.api.providers.exception.FileException;
 import org.pentaho.di.plugins.fileopensave.providers.model.TestDirectory;
 import org.pentaho.di.plugins.fileopensave.providers.model.TestFile;
@@ -58,27 +55,34 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     return true;
   }
 
-  @Override public Tree getTree() {
+  @Override
+  public Tree getTree( Bowl bowl ) {
     TestTree testTree = new TestTree( NAME );
     TestDirectory testDirectory = new TestDirectory();
     testDirectory.setPath( "/" );
-    testTree.setFiles( getFiles( testDirectory, null ) );
+    testTree.setFiles( getFiles( bowl, testDirectory, null, null ) );
     return testTree;
   }
 
-  @Override public List<TestFile> getFiles( TestFile file, String filters ) {
+  @Override
+  public List<TestFile> getFiles( Bowl bowl, TestFile file, String filters, VariableSpace space ) {
     List<TestFile> files = new ArrayList<>();
-    testFileSystem.get( file.getPath() ).forEach( testFile -> {
+    List<TestFile> testFiles = testFileSystem.get( file.getPath() );
+    if ( testFiles == null ) {
+      return files;
+    }
+    testFiles.forEach( testFile -> {
       if ( testFile instanceof TestDirectory ) {
         files.add( TestDirectory.create( testFile.getName(), testFile.getPath(), testFile.getParent() ) );
-      } else {
+      } else if ( Utils.matches(testFile.getName(), filters) ) {
         files.add( TestFile.create( testFile.getName(), testFile.getPath(), testFile.getParent() ) );
       }
     } );
     return files;
   }
 
-  @Override public List<TestFile> delete( List<TestFile> files ) throws FileException {
+  @Override
+  public List<TestFile> delete( Bowl bowl, List<TestFile> files, VariableSpace space ) throws FileException {
     List<TestFile> deletedFiles = new ArrayList<>();
     for ( TestFile testFile : files ) {
       if ( doDelete( testFile ) ) {
@@ -97,24 +101,30 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     return false;
   }
 
-  @Override public TestFile add( TestFile folder ) throws FileException {
+  @Override
+  public TestFile add( Bowl bowl, TestFile folder, VariableSpace space ) throws FileException {
     testFileSystem.get( folder.getParent() ).add( folder );
     return folder;
   }
 
-  @Override public boolean fileExists( TestFile dir, String path ) throws FileException {
+  @Override
+  public boolean fileExists( Bowl bowl, TestFile dir, String path, VariableSpace space ) throws FileException {
     return findFile( dir, path ) != null;
   }
 
-  @Override public String getNewName( TestFile destDir, String newPath ) throws FileException {
+  @Override
+  public String getNewName( Bowl bowl, TestFile destDir, String newPath, VariableSpace space ) throws FileException {
     return newPath + " " + 1;
   }
 
-  @Override public boolean isSame( File file1, File file2 ) {
+  @Override
+  public boolean isSame( Bowl bowl, File file1, File file2 ) {
     return file1.getProvider().equals( file2.getProvider() );
   }
 
-  @Override public TestFile rename( TestFile file, String newPath, boolean overwrite ) throws FileException {
+  @Override
+  public TestFile rename( Bowl bowl, TestFile file, String newPath, OverwriteStatus overwriteStatus,
+                          VariableSpace space ) throws FileException {
     TestFile findFile = findFile( file );
     if ( findFile != null ) {
       findFile.setPath( newPath );
@@ -124,7 +134,8 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     return findFile;
   }
 
-  @Override public TestFile copy( TestFile file, String toPath, boolean overwrite )
+  @Override
+  public TestFile copy( Bowl bowl, TestFile file, String toPath, OverwriteStatus overwriteStatus, VariableSpace space )
     throws FileException {
     TestFile findFile = findFile( file );
     if ( findFile != null ) {
@@ -142,25 +153,30 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     return null;
   }
 
-  @Override public TestFile move( TestFile file, String toPath, boolean overwrite )
+  @Override
+  public TestFile move( Bowl bowl, TestFile file, String toPath, OverwriteStatus overwriteStatus, VariableSpace space )
     throws FileException {
-    TestFile newFile = copy( file, toPath, overwrite );
+    TestFile newFile = copy( bowl, file, toPath, overwriteStatus, space );
     if ( newFile != null ) {
       doDelete( newFile );
     }
     return newFile;
   }
 
-  @Override public InputStream readFile( TestFile file ) throws FileException {
+  @Override
+  public InputStream readFile( Bowl bowl, TestFile file, VariableSpace space ) throws FileException {
     return null;
   }
 
-  @Override public TestFile writeFile( InputStream inputStream, TestFile destDir, String path, boolean overwrite )
+  @Override
+  public TestFile writeFile( Bowl bowl, InputStream inputStream, TestFile destDir, String path,
+                             OverwriteStatus overwriteStatus, VariableSpace space )
     throws FileException {
     return null;
   }
 
-  @Override public TestFile getParent( TestFile file ) {
+  @Override
+  public TestFile getParent( Bowl bowl, TestFile file ) {
     return TestDirectory.create( null, file.getParent(), "" );
   }
 
@@ -195,46 +211,47 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     files1.add( TestDirectory.create( "directory2", "/directory2", "/" ) );
     files1.add( TestDirectory.create( "directory3", "/directory3", "/" ) );
     files1.add( TestDirectory.create( "directory4", "/directory4", "/" ) );
+    files1.add( TestDirectory.create( "directory45", "/directory45", "/" ) );
     fileSystem.put( "/", files1 );
 
     List<TestFile> files2 = new ArrayList<>();
-    files2.add( TestFile.create( "file1", "/directory1/file1", "/" ) );
-    files2.add( TestFile.create( "file2", "/directory1/file2", "/" ) );
-    files2.add( TestFile.create( "file3", "/directory1/file3", "/" ) );
-    files2.add( TestFile.create( "file4", "/directory1/file4", "/" ) );
-    files2.add( TestDirectory.create( "directory1", "/directory1/directory1", "/" ) );
-    files2.add( TestDirectory.create( "directory2", "/directory1/directory2", "/" ) );
-    files2.add( TestDirectory.create( "directory3", "/directory1/directory3", "/" ) );
-    files2.add( TestDirectory.create( "directory4", "/directory1/directory4", "/" ) );
+    files2.add( TestFile.create( "file1", "/directory1/file1", "/directory1" ) );
+    files2.add( TestFile.create( "file2", "/directory1/file2", "/directory1" ) );
+    files2.add( TestFile.create( "file3", "/directory1/file3", "/directory1" ) );
+    files2.add( TestFile.create( "file4", "/directory1/file4", "/directory1" ) );
+    files2.add( TestDirectory.create( "directory1", "/directory1/directory1", "/directory1" ) );
+    files2.add( TestDirectory.create( "directory2", "/directory1/directory2", "/directory1" ) );
+    files2.add( TestDirectory.create( "directory3", "/directory1/directory3", "/directory1" ) );
+    files2.add( TestDirectory.create( "directory4", "/directory1/directory4", "/directory1" ) );
     fileSystem.put( "/directory1", files2 );
 
     List<TestFile> files3 = new ArrayList<>();
-    files3.add( TestFile.create( "file1", "/directory2/file1", "/" ) );
-    files3.add( TestFile.create( "file2", "/directory2/file2", "/" ) );
-    files3.add( TestFile.create( "file3", "/directory2/file3", "/" ) );
-    files3.add( TestFile.create( "file4", "/directory2/file4", "/" ) );
-    files3.add( TestDirectory.create( "directory1", "/directory2/directory1", "/" ) );
-    files3.add( TestDirectory.create( "directory2", "/directory2/directory2", "/" ) );
-    files3.add( TestDirectory.create( "directory3", "/directory2/directory3", "/" ) );
-    files3.add( TestDirectory.create( "directory4", "/directory2/directory4", "/" ) );
+    files3.add( TestFile.create( "file1", "/directory2/file1", "/directory2" ) );
+    files3.add( TestFile.create( "file2", "/directory2/file2", "/directory2" ) );
+    files3.add( TestFile.create( "file3", "/directory2/file3", "/directory2" ) );
+    files3.add( TestFile.create( "file4", "/directory2/file4", "/directory2" ) );
+    files3.add( TestDirectory.create( "directory1", "/directory2/directory1", "/directory2" ) );
+    files3.add( TestDirectory.create( "directory2", "/directory2/directory2", "/directory2" ) );
+    files3.add( TestDirectory.create( "directory3", "/directory2/directory3", "/directory2" ) );
+    files3.add( TestDirectory.create( "directory4", "/directory2/directory4", "/directory2" ) );
     fileSystem.put( "/directory2", files3 );
 
     List<TestFile> files4 = new ArrayList<>();
-    files4.add( TestFile.create( "file1", "/directory3/file1", "/" ) );
-    files4.add( TestFile.create( "file2", "/directory3/file2", "/" ) );
-    files4.add( TestFile.create( "file3", "/directory3/file3", "/" ) );
-    files4.add( TestFile.create( "file4", "/directory3/file4", "/" ) );
-    files4.add( TestDirectory.create( "directory1", "/directory3/directory1", "/" ) );
-    files4.add( TestDirectory.create( "directory2", "/directory3/directory2", "/" ) );
-    files4.add( TestDirectory.create( "directory3", "/directory3/directory3", "/" ) );
-    files4.add( TestDirectory.create( "directory4", "/directory3/directory4", "/" ) );
+    files4.add( TestFile.create( "file1", "/directory3/file1", "/directory3" ) );
+    files4.add( TestFile.create( "file2", "/directory3/file2", "/directory3" ) );
+    files4.add( TestFile.create( "file3", "/directory3/file3", "/directory3" ) );
+    files4.add( TestFile.create( "file4", "/directory3/file4", "/directory3" ) );
+    files4.add( TestDirectory.create( "directory1", "/directory3/directory1", "/directory3" ) );
+    files4.add( TestDirectory.create( "directory2", "/directory3/directory2", "/directory3" ) );
+    files4.add( TestDirectory.create( "directory3", "/directory3/directory3", "/directory3" ) );
+    files4.add( TestDirectory.create( "directory4", "/directory3/directory4", "/directory3" ) );
     fileSystem.put( "/directory3", files4 );
 
     List<TestFile> files5 = new ArrayList<>();
-    files5.add( TestDirectory.create( "directory1", "/directory4/directory1", "/" ) );
-    files5.add( TestDirectory.create( "directory2", "/directory4/directory2", "/" ) );
-    files5.add( TestDirectory.create( "directory3", "/directory4/directory3", "/" ) );
-    files5.add( TestDirectory.create( "directory4", "/directory4/directory4", "/" ) );
+    files5.add( TestDirectory.create( "directory1", "/directory4/directory1", "/directory4" ) );
+    files5.add( TestDirectory.create( "directory2", "/directory4/directory2", "/directory4" ) );
+    files5.add( TestDirectory.create( "directory3", "/directory4/directory3", "/directory4" ) );
+    files5.add( TestDirectory.create( "directory4", "/directory4/directory4", "/directory4" ) );
     fileSystem.put( "/directory4", files5 );
 
     return fileSystem;
@@ -244,7 +261,14 @@ public class TestFileProvider extends BaseFileProvider<TestFile> {
     //Any local caches that this provider might use should be cleared here.
   }
 
-  @Override public TestFile getFile( TestFile file ) {
+  @Override
+  public TestFile createDirectory( Bowl bowl, String parentPath, TestFile file, String newDirectoryName )
+    throws FileException, KettleFileException {
+    return null;
+  }
+
+  @Override
+  public TestFile getFile( Bowl bowl, TestFile file, VariableSpace space ) {
     return null;
   }
 }

@@ -1,38 +1,30 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.job.entries.deletefiles;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import org.apache.commons.vfs2.FileSystemException;
+import org.apache.commons.vfs2.provider.local.LocalFile;
 import org.pentaho.di.core.exception.KettleValueException;
 import org.pentaho.di.job.entry.validator.AbstractFileValidator;
 import org.pentaho.di.job.entry.validator.AndValidator;
 import org.pentaho.di.job.entry.validator.JobEntryValidatorUtils;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -212,7 +204,7 @@ public class JobEntryDeleteFiles extends JobEntryBase implements Cloneable, JobE
         .valueOf( ( resultRows != null ? resultRows.size() : 0 ) ) ) );
     }
 
-    //Set Embedded NamedCluter MetatStore Provider Key so that it can be passed to VFS
+    //Set Embedded NamedCluster MetaStore Provider Key so that it can be passed to VFS
     if ( parentJobMeta.getNamedClusterEmbedManager() != null ) {
       parentJobMeta.getNamedClusterEmbedManager()
         .passEmbeddedMetastoreKey( this, parentJobMeta.getEmbeddedMetastoreProviderKey() );
@@ -299,53 +291,59 @@ public class JobEntryDeleteFiles extends JobEntryBase implements Cloneable, JobE
   boolean processFile( String path, String wildcard, Job parentJob ) {
     boolean isDeleted = false;
     FileObject fileFolder = null;
-
     try {
-      fileFolder = KettleVFS.getFileObject( path, this );
+      fileFolder = KettleVFS.getInstance( parentJobMeta.getBowl() ).getFileObject(path, this);
 
-      if ( fileFolder.exists() ) {
-        if ( fileFolder.getType() == FileType.FOLDER ) {
+      if (fileFolder.exists()) {
+        if (new TextFileSelector(fileFolder.toString(), wildcard, parentJob).hasAccess(fileFolder)) {
+          if (fileFolder.getType() == FileType.FOLDER) {
 
-          if ( log.isDetailed() ) {
-            logDetailed( BaseMessages.getString( PKG, "JobEntryDeleteFiles.ProcessingFolder", path ) );
-          }
+            if (log.isDetailed()) {
+              logDetailed(BaseMessages.getString(PKG, "JobEntryDeleteFiles.ProcessingFolder", path));
+            }
 
-          int totalDeleted = fileFolder.delete( new TextFileSelector( fileFolder.toString(), wildcard, parentJob ) );
+            int totalDeleted = fileFolder.delete(new TextFileSelector(fileFolder.toString(), wildcard, parentJob));
 
-          if ( log.isDetailed() ) {
-            logDetailed(
-              BaseMessages.getString( PKG, "JobEntryDeleteFiles.TotalDeleted", String.valueOf( totalDeleted ) ) );
-          }
-          isDeleted = true;
-        } else {
-
-          if ( log.isDetailed() ) {
-            logDetailed( BaseMessages.getString( PKG, "JobEntryDeleteFiles.ProcessingFile", path ) );
-          }
-          isDeleted = fileFolder.delete();
-          if ( !isDeleted ) {
-            logError( BaseMessages.getString( PKG, "JobEntryDeleteFiles.CouldNotDeleteFile", path ) );
+            if (log.isDetailed()) {
+              logDetailed(
+                      BaseMessages.getString(PKG, "JobEntryDeleteFiles.TotalDeleted", String.valueOf(totalDeleted)));
+            }
+            isDeleted = true;
           } else {
-            if ( log.isBasic() ) {
-              logBasic( BaseMessages.getString( PKG, "JobEntryDeleteFiles.FileDeleted", path ) );
+
+            if (log.isDetailed()) {
+              logDetailed(BaseMessages.getString(PKG, "JobEntryDeleteFiles.ProcessingFile", path));
+            }
+            isDeleted = fileFolder.delete();
+            if (!isDeleted) {
+              logError(BaseMessages.getString(PKG, "JobEntryDeleteFiles.CouldNotDeleteFile", path));
+            } else {
+              if (log.isBasic()) {
+                logBasic(BaseMessages.getString(PKG, "JobEntryDeleteFiles.FileDeleted", path));
+              }
             }
           }
+        } else {
+          if (log.isBasic()) {
+            logBasic(BaseMessages.getString(PKG, "JobEntryDeleteFiles.FileAccessDenied", path));
+          }
+          isDeleted = false;
         }
       } else {
         // File already deleted, no reason to try to delete it
-        if ( log.isBasic() ) {
-          logBasic( BaseMessages.getString( PKG, "JobEntryDeleteFiles.FileAlreadyDeleted", path ) );
+        if (log.isBasic()) {
+          logBasic(BaseMessages.getString(PKG, "JobEntryDeleteFiles.FileAlreadyDeleted", path));
         }
         isDeleted = true;
       }
-    } catch ( Exception e ) {
-      logError( BaseMessages.getString( PKG, "JobEntryDeleteFiles.CouldNotProcess", path, e
-        .getMessage() ), e );
+    } catch (Exception e) {
+      logError(BaseMessages.getString(PKG, "JobEntryDeleteFiles.CouldNotProcess", path, e
+              .getMessage()), e);
     } finally {
-      if ( fileFolder != null ) {
+      if (fileFolder != null) {
         try {
           fileFolder.close();
-        } catch ( IOException ex ) {
+        } catch (IOException ex) {
           // Ignore
         }
       }
@@ -407,8 +405,12 @@ public class JobEntryDeleteFiles extends JobEntryBase implements Cloneable, JobE
 
     private boolean hasAccess( FileObject fileObject ) {
       try {
-        return Files.isReadable( Paths.get( ( new File( fileObject.getName().getPath() ) ).toURI() ) );
-      } catch ( Exception e ) {
+        if ( fileObject instanceof LocalFile ) {
+          // fileObject.isReadable wrongly returns true in windows file system even if not readable
+          return Files.isReadable( fileObject.getPath().toAbsolutePath() );
+        }
+        return fileObject.isReadable();
+      } catch ( FileSystemException e ) {
         // Something went wrong... well, let's assume "no access"!
         return false;
       }
@@ -457,8 +459,8 @@ public class JobEntryDeleteFiles extends JobEntryBase implements Cloneable, JobE
 
   public void check( List<CheckResultInterface> remarks, JobMeta jobMeta, VariableSpace space,
     Repository repository, IMetaStore metaStore ) {
-    boolean isValid = JobEntryValidatorUtils.andValidator().validate( this, "arguments", remarks,
-        AndValidator.putValidators( JobEntryValidatorUtils.notNullValidator() ) );
+    boolean isValid = JobEntryValidatorUtils.andValidator().validate( parentJobMeta.getBowl(), this, "arguments",
+        remarks, AndValidator.putValidators( JobEntryValidatorUtils.notNullValidator() ) );
 
     if ( !isValid ) {
       return;
@@ -470,7 +472,8 @@ public class JobEntryDeleteFiles extends JobEntryBase implements Cloneable, JobE
         JobEntryValidatorUtils.fileExistsValidator() );
 
     for ( int i = 0; i < arguments.length; i++ ) {
-      JobEntryValidatorUtils.andValidator().validate( this, "arguments[" + i + "]", remarks, ctx );
+      JobEntryValidatorUtils.andValidator().validate( parentJobMeta.getBowl(), this, "arguments[" + i + "]", remarks,
+        ctx );
     }
   }
 

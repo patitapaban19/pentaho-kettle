@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2018 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.textfileinput;
 
@@ -30,7 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.vfs2.FileObject;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.util.Utils;
@@ -893,7 +885,8 @@ public class TextFileInput extends BaseStep implements StepInterface {
           }
           String fileValue = prevInfoFields.getString( fileRow, idx );
           try {
-            FileObject fileObject = KettleVFS.getFileObject( fileValue, getTransMeta() );
+            FileObject fileObject = KettleVFS.getInstance( getTransMeta().getBowl() )
+              .getFileObject( fileValue, getTransMeta() );
             data.getFiles().addFile( fileObject );
             if ( meta.isPassingThruFields() ) {
               data.passThruFields.put( fileObject, fileRow );
@@ -916,7 +909,8 @@ public class TextFileInput extends BaseStep implements StepInterface {
       }
 
       // // get the metadata populated. Simple and easy.
-      meta.getFields( data.outputRowMeta, getStepname(), infoStep, null, this, repository, metaStore );
+      meta.getFields( getTransMeta().getBowl(), data.outputRowMeta, getStepname(), infoStep, null, this, repository,
+        metaStore );
       // Create convert meta-data objects that will contain Date & Number formatters
       //
       data.convertRowMeta = data.outputRowMeta.cloneToType( ValueMetaInterface.TYPE_STRING );
@@ -1391,7 +1385,7 @@ public class TextFileInput extends BaseStep implements StepInterface {
         data.lastModificationDateTime = new Date( data.file.getContent().getLastModifiedTime() );
       }
       if ( data.addUri ) {
-        data.uriName = data.file.getName().getURI();
+        data.uriName = Const.optionallyDecodeUriString( data.file.getName().getURI() );
       }
       if ( data.addRootUri ) {
         data.rootUriName = data.file.getName().getRootURI();
@@ -1532,7 +1526,7 @@ public class TextFileInput extends BaseStep implements StepInterface {
       initErrorHandling();
       initReplayFactory();
 
-      data.setFiles( meta.getTextFileList( this ) );
+      data.setFiles( meta.getTextFileList( getTransMeta().getBowl(), this ) );
       data.filterProcessor = new TextFileFilterProcessor( meta.getFilter() );
 
       // If there are missing files,

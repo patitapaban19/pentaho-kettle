@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.step.jms;
 
@@ -36,6 +28,7 @@ import org.pentaho.di.trans.ISubTransAwareMeta;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.di.trans.step.StepDataInterface;
+import org.pentaho.di.trans.step.StepHelperInterface;
 import org.pentaho.di.trans.step.StepInterface;
 import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.step.StepMetaInterface;
@@ -63,7 +56,7 @@ import static org.pentaho.metaverse.api.analyzer.kettle.step.ExternalResourceSte
   name = "JmsConsumer.TypeLongDesc",
   description = "JmsConsumer.TypeTooltipDesc",
   categoryDescription = "i18n:org.pentaho.di.trans.step:BaseStep.Category.Streaming",
-  documentationUrl = "Products/JMS_Consumer" )
+  documentationUrl = "pdi-transformation-steps-reference-overview/jms-consumer" )
 @Metaverse.CategoryMap ( entity = JMS_DESTINATION_METAVERSE, category = CATEGORY_MESSAGE_QUEUE )
 @Metaverse.CategoryMap ( entity = JMS_SERVER_METAVERSE, category = CATEGORY_DATASOURCE )
 @Metaverse.EntityLink ( entity = JMS_SERVER_METAVERSE, link = LINK_PARENT_CONCEPT, parentEntity =
@@ -112,9 +105,8 @@ public class JmsConsumerMeta extends BaseStreamStepMeta implements ISubTransAwar
   @Metaverse.NodeLink ( nodeName = JMS_REDELIVERED_METAVERSE, parentNodeName = JMS_DESTINATION_METAVERSE, linkDirection = "OUT" )
   public String jmsRedelivered = "jmsRedelivered";
 
-  @VisibleForTesting
   public JmsConsumerMeta() {
-    this( new JmsDelegate( singletonList( new ActiveMQProvider() ) ) );
+    this( new JmsDelegate() );
   }
 
   public JmsConsumerMeta( JmsDelegate jmsDelegate ) {
@@ -153,6 +145,11 @@ public class JmsConsumerMeta extends BaseStreamStepMeta implements ISubTransAwar
 
   @Override public StepDataInterface getStepData() {
     return new GenericStepData();
+  }
+
+  @Override
+  public StepHelperInterface getStepHelperInterface() {
+    return new JmsConsumerHelper( this );
   }
 
   /**

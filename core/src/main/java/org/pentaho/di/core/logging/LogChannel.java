@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.logging;
 
@@ -26,6 +18,7 @@ import java.util.Date;
 import java.util.Queue;
 import java.util.Map;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.metrics.MetricsSnapshot;
@@ -34,9 +27,12 @@ import org.pentaho.di.core.metrics.MetricsSnapshotType;
 
 public class LogChannel implements LogChannelInterface {
 
-  public static final LogChannelInterface GENERAL = new LogChannel( "General", false, false );
-  public static final LogChannelInterface METADATA = new LogChannel( "Metadata", false, false );
-  public static final LogChannelInterface UI = new LogChannel( "GUI", false, false );
+  public static final String GENERAL_SUBJECT = "General";
+  public static final String METADATA_SUBJECT = "Metadata";
+  public static final String GUI_SUBJECT = "GUI";
+  public static final LogChannelInterface GENERAL = new LogChannel( GENERAL_SUBJECT, false, false );
+  public static final LogChannelInterface METADATA = new LogChannel( METADATA_SUBJECT, false, false );
+  public static final LogChannelInterface UI = new LogChannel( GUI_SUBJECT, false, false );
 
   private static final String DEFAULT_LOG_SUBJECT = "Kettle";
 
@@ -52,6 +48,7 @@ public class LogChannel implements LogChannelInterface {
 
   private boolean forcingSeparateLogging;
 
+  private LoggingObjectLifecycleInterface logChannelHooks;
 
   private String filter;
 
@@ -86,6 +83,10 @@ public class LogChannel implements LogChannelInterface {
       this.containerObjectId = null;
     }
     logChannelId = LoggingRegistry.getInstance().registerLoggingSource( subject );
+    // Verify is parentObject has hooks defined
+    if ( parentObject != null ) {
+      this.setHooks( parentObject );
+    }
   }
 
   public LogChannel( Object subject, LoggingObjectInterface parentObject, boolean gatheringMetrics ) {
@@ -104,6 +105,7 @@ public class LogChannel implements LogChannelInterface {
   }
 
   public void println( LogMessageInterface logMessage, LogLevel channelLogLevel ) {
+
     String subject = logMessage.getSubject();
 
     if ( !logMessage.getLevel().isVisible( channelLogLevel ) ) {
@@ -121,22 +123,22 @@ public class LogChannel implements LogChannelInterface {
       return; // "filter" not found in row: don't show!
     }
 
-    // Let's not keep everything...
-    //
-    if ( channelLogLevel.getLevel() >= logMessage.getLevel().getLevel() ) {
-      KettleLoggingEvent loggingEvent = new KettleLoggingEvent( logMessage, System.currentTimeMillis(),
-        logMessage.getLevel() );
-      KettleLogStore.getAppender().addLogggingEvent( loggingEvent );
+    callBeforeLog();
 
-      if ( this.fileWriter == null ) {
-        this.fileWriter = LoggingRegistry.getInstance().getLogChannelFileWriterBuffer( logChannelId );
-      }
+    KettleLoggingEvent loggingEvent = new KettleLoggingEvent( logMessage, System.currentTimeMillis(),
+      logMessage.getLevel() );
+    KettleLogStore.getAppender().addLogggingEvent( loggingEvent );
 
-      // add to buffer
-      if ( this.fileWriter != null ) {
-        this.fileWriter.addEvent( loggingEvent );
-      }
+    if ( this.fileWriter == null ) {
+      this.fileWriter = LoggingRegistry.getInstance().getLogChannelFileWriterBuffer( logChannelId );
     }
+
+    // add to buffer
+    if ( this.fileWriter != null ) {
+      this.fileWriter.addEvent( loggingEvent );
+    }
+
+    callAfterLog();
   }
 
   public void println( LogMessageInterface message, Throwable e, LogLevel channelLogLevel ) {
@@ -408,5 +410,29 @@ public class LogChannel implements LogChannelInterface {
     GENERAL.setLogLevel( level );
     UI.setLogLevel( level );
     METADATA.setLogLevel( level );
+  }
+
+  @Override public LoggingObjectLifecycleInterface getHooks() {
+    return this.logChannelHooks;
+  }
+
+  @Override public void setHooks( LoggingObjectLifecycleInterface loggingObjectLifecycleInterface ) {
+    this.logChannelHooks = loggingObjectLifecycleInterface;
+  }
+
+  @VisibleForTesting
+  void callBeforeLog() {
+    LoggingObjectLifecycleInterface hooks = getHooks();
+    if ( hooks != null ) {
+      hooks.callBeforeLog();
+    }
+  }
+
+  @VisibleForTesting
+  void callAfterLog() {
+    LoggingObjectLifecycleInterface hooks = getHooks();
+    if ( hooks != null ) {
+      hooks.callAfterLog();
+    }
   }
 }

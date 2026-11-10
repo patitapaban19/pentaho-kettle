@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.plugins;
 
@@ -37,7 +29,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -45,6 +39,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.vfs2.FileObject;
 import org.apache.commons.vfs2.FileSelectInfo;
 import org.apache.commons.vfs2.FileSelector;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.util.Utils;
@@ -63,6 +58,8 @@ import org.w3c.dom.Node;
 public abstract class BasePluginType implements PluginTypeInterface {
   protected static final Class<?> PKG = BasePluginType.class; // for i18n purposes, needed by Translator2!!
 
+  protected static final String DEPRECATED_CATEGORY_KEY = "PluginRegistry.Category.Deprecated";
+  
   protected String id;
   protected String name;
   protected List<PluginFolderInterface> pluginFolders;
@@ -76,6 +73,10 @@ public abstract class BasePluginType implements PluginTypeInterface {
   protected boolean searchLibDir;
 
   Class<? extends java.lang.annotation.Annotation> pluginClass;
+
+  private static final String CLASSPATH_VARIABLE_START_DELIMITER = "${";
+  private static final String CLASSPATH_VARIABLE_END_DELIMITER = "}";
+  private static final String PLUGIN_PROPERTIES_FILE_NAME = "plugin.properties";
 
   public BasePluginType( Class<? extends java.lang.annotation.Annotation> pluginClass ) {
     this.pluginFolders = new ArrayList<>();
@@ -377,6 +378,12 @@ public abstract class BasePluginType implements PluginTypeInterface {
     }
   }
 
+  @VisibleForTesting
+  protected List<Class<?>> findAnnotatedClassFiles( String folder, Class<? extends Annotation> annotationClass ) {
+    // Dummy implementation for test coverage
+    return Collections.emptyList();
+  }
+
   protected List<JarFileAnnotationPlugin> findAnnotatedClassFiles( String annotationClassName ) {
     JarFileCache jarFileCache = JarFileCache.getInstance();
     List<JarFileAnnotationPlugin> classFiles = new ArrayList<>();
@@ -432,7 +439,7 @@ public abstract class BasePluginType implements PluginTypeInterface {
 
     List<FileObject> list = new ArrayList<>();
     try {
-      FileObject folderObject = KettleVFS.getFileObject( folder );
+      FileObject folderObject = KettleVFS.getInstance( DefaultBowl.getInstance() ).getFileObject( folder );
       FileObject[] files = folderObject.findFiles( new FileSelector() {
 
         @Override
@@ -480,7 +487,7 @@ public abstract class BasePluginType implements PluginTypeInterface {
     PluginInterface stepPlugin =
       new Plugin(
         new String[] { id }, pluginType, mainClassTypesAnnotation.value(), cat, name, desc, image, false,
-        false, classMap, new ArrayList<String>(), null, null, null, null, null );
+        false, classMap, new ArrayList<>(), null, null, null, null, null );
     registry.registerPlugin( pluginType, stepPlugin );
   }
 
@@ -512,6 +519,8 @@ public abstract class BasePluginType implements PluginTypeInterface {
         }
       }
 
+      boolean deprecated = !Utils.isEmpty( category ) ? category.toLowerCase().contains( "deprecated" ) : false;
+      
       // Localized categories, descriptions and tool tips
       //
       Map<String, String> localizedCategories = readPluginLocale( pluginNode, "localized_category", "category" );
@@ -520,7 +529,7 @@ public abstract class BasePluginType implements PluginTypeInterface {
       Map<String, String> localDescriptions =
         readPluginLocale( pluginNode, "localized_description", "description" );
       description = getAlternativeTranslation( description, localDescriptions );
-      description += addDeprecation( category );
+      description += addDeprecation( deprecated );
 
       suggestion = getAlternativeTranslation( suggestion, localDescriptions );
 
@@ -556,14 +565,15 @@ public abstract class BasePluginType implements PluginTypeInterface {
         classMap.put( entry.getKey(), clzName );
       }
 
-      PluginInterface pluginInterface =
+      Plugin plugin =
         new Plugin(
           idAttr.split( "," ), pluginType, mainClassTypesAnnotation.value(), category, description, tooltip,
           iconFilename, false, nativePlugin, classMap, jarFiles, errorHelpFileFull, pluginFolder,
           documentationUrl, casesUrl, forumUrl, suggestion );
-      registry.registerPlugin( pluginType, pluginInterface );
+      plugin.setDeprecated( deprecated );
+      registry.registerPlugin( pluginType, plugin );
 
-      return pluginInterface;
+      return plugin;
     } catch ( Exception e ) {
       throw new KettlePluginException( BaseMessages.getString(
         PKG, "BasePluginType.RuntimeError.UnableToReadPluginXML.PLUGIN0001" ), e );
@@ -626,6 +636,11 @@ public abstract class BasePluginType implements PluginTypeInterface {
     return map;
   }
 
+  @VisibleForTesting
+  protected ClassLoader createUrlClassLoader( List<File> files, ClassLoader parent ) {
+    return new java.net.URLClassLoader( new java.net.URL[0], parent );
+  }
+
   /**
    * Create a new URL class loader with the jar file specified. Also include all the jar files in the lib folder next to
    * that file.
@@ -658,7 +673,121 @@ public abstract class BasePluginType implements PluginTypeInterface {
 
     urls.add( jarFileUrl );
 
-    return new KettleURLClassLoader( urls.toArray( new URL[urls.size()] ), classLoader );
+    KettleURLClassLoader urlClassLoader = new KettleURLClassLoader( urls.toArray( new URL[ 0 ] ), classLoader );
+    return processPluginClasspath( urlClassLoader, jarFileUrl, urls, classLoader );
+  }
+  
+  /**
+   *
+   * @param urlClassLoader
+   * @param jarFileUrl
+   * @param urls
+   * @param classLoader
+   * @return the updated classloader
+   *
+   * * Adds the entries defined in the classpath.properties located at the root of the plugin to the plugin classpath
+   */
+  @SuppressWarnings("java:S3776")
+  private KettleURLClassLoader processPluginClasspath(
+    KettleURLClassLoader urlClassLoader, URL jarFileUrl, List<URL> urls, ClassLoader classLoader ) {
+    try {
+      String pluginRootFolderName = new File( URLDecoder.decode( jarFileUrl.getFile(), "UTF-8" ) ).getParent();
+      File pluginRootFolder = new File( pluginRootFolderName );
+      if ( pluginRootFolder.exists() ) {
+        File classPathFile = new File( pluginRootFolder, "classpath.properties" );
+        if ( classPathFile.exists() ) {
+          Properties classPathProperties = new Properties();
+          try ( FileInputStream classPathFileInputStream = new FileInputStream( classPathFile ) ) {
+            classPathProperties.load( classPathFileInputStream );
+          }
+          String classpathProperty = classPathProperties.getProperty( "classpath" );
+          classpathProperty = processClasspath( pluginRootFolderName, classpathProperty );
+          String[] sourceDirectories = classpathProperty != null ? classpathProperty.split( ":" ) : new String[ 0 ];
+          for ( String sourceDirectory : sourceDirectories ) {
+            File sourceDirectoryFile = new File( pluginRootFolder, sourceDirectory );
+            if ( sourceDirectoryFile.getCanonicalFile().exists() ) {
+              PluginFolder pluginFolder = new PluginFolder(
+                sourceDirectoryFile.getCanonicalPath(), false, true, searchLibDir );
+              FileObject[] libFiles = pluginFolder.findJarFiles( true );
+              for ( FileObject libFile : libFiles ) {
+                urls.add( libFile.getURL() );
+              }
+            }
+          }
+          urlClassLoader = new KettleURLClassLoader( urls.toArray( new URL[ urls.size() ] ), classLoader );
+        }
+      }
+    } catch ( Exception e ) {
+      LogChannel.GENERAL.logError( e.getMessage() );
+    }
+    return urlClassLoader;
+  }
+
+    /**
+     * Process the classpath variable in the classpath string. If the classpath contains variables like ${VAR} then
+     * replace them with the value from plugin.properties.
+     *
+     * @param pluginRootFolder
+     *          The root folder of the plugin
+     * @param classpath
+     *          The classpath to process
+     * @return The processed classpath
+     */
+  private String processClasspath( String pluginRootFolder, final String classpath ) {
+    if ( classpath == null || !classpath.contains( CLASSPATH_VARIABLE_START_DELIMITER ) ) {
+      return classpath;
+    }
+    List<String> classpathVariables = getVariables( classpath );
+    Properties pluginProperties = loadPluginProperties( pluginRootFolder );
+    AtomicReference<String> newClasspath = new AtomicReference<>( classpath );
+    classpathVariables.forEach( variable -> newClasspath.set( newClasspath.get().replace(
+            CLASSPATH_VARIABLE_START_DELIMITER + variable + CLASSPATH_VARIABLE_END_DELIMITER,
+            pluginProperties.getProperty( variable, "" ) ) ) );
+    return newClasspath.get();
+  }
+
+    /**
+     * Get the variables in the classpath string. The variables are defined as ${VAR} in the classpath string.
+     *
+     * @param classpath
+     *          The classpath to process
+     * @return A list of variable names found in the classpath
+     */
+  private List<String> getVariables( String classpath ) {
+    if ( classpath == null || !classpath.contains( CLASSPATH_VARIABLE_START_DELIMITER ) ) {
+      return new ArrayList<>();
+    }
+    List<String> variables = new ArrayList<>();
+    int startIndex = 0;
+    while ( ( startIndex = classpath.indexOf( CLASSPATH_VARIABLE_START_DELIMITER, startIndex ) ) != -1 ) {
+      int endIndex = classpath.indexOf( CLASSPATH_VARIABLE_END_DELIMITER, startIndex );
+      if ( endIndex == -1 ) {
+        break; // No closing brace found
+      }
+      String variableName = classpath.substring( startIndex + 2, endIndex );
+      variables.add( variableName );
+      startIndex = endIndex + 1; // Move past the closing brace
+    }
+    return variables;
+  }
+
+  /**
+   * Load the plugin properties file from the plugin root folder.
+   *
+   * @param pluginRootFolder
+   *          The root folder of the plugin
+   * @return The properties loaded from the plugin.properties file, or null if the file could not be loaded
+   */
+  Properties loadPluginProperties( String pluginRootFolder ) {
+    Properties properties = new Properties();
+    String propertiesFilePath = pluginRootFolder + Const.FILE_SEPARATOR + PLUGIN_PROPERTIES_FILE_NAME;
+    try ( InputStream inputStream = new FileInputStream( propertiesFilePath ) ) {
+      properties.load( inputStream );
+    } catch ( Exception e ) {
+      LogChannel.GENERAL.logError( "Error loading plugin.properties", e );
+      return null;
+    }
+    return properties;
   }
 
   protected abstract String extractID( java.lang.annotation.Annotation annotation );
@@ -682,6 +811,15 @@ public abstract class BasePluginType implements PluginTypeInterface {
   protected abstract String extractCasesUrl( java.lang.annotation.Annotation annotation );
 
   protected abstract String extractForumUrl( java.lang.annotation.Annotation annotation );
+  
+  /**
+   * Some annotations may now have a "deprecated" annotation property
+   * @param annotation  The annotation to extract a deprecated property from
+   * @return  A boolean where <code>true</code> represents a deprecated plugin annotation
+   */
+  protected boolean extractDeprecated( java.lang.annotation.Annotation annotation ) {
+    return false;
+  }
 
   @SuppressWarnings( "squid:S1172" )  //Overriding classes use the parameter
   protected String extractClassLoaderGroup( java.lang.annotation.Annotation annotation ) {
@@ -759,7 +897,14 @@ public abstract class BasePluginType implements PluginTypeInterface {
     String altPackageName = clazz.getPackage().getName();
     String pluginName = getTranslation( extractName( annotation ), packageName, altPackageName, clazz );
     String description = getTranslation( extractDesc( annotation ), packageName, altPackageName, clazz );
-    String category = getTranslation( extractCategory( annotation ), packageName, altPackageName, clazz );
+    
+    String category = extractCategory( annotation );
+    
+    //deprecation is either based on a deprecated annotation or a category that contains "deprecated" in the translation key
+    boolean deprecated = extractDeprecated( annotation ) ||
+            ( !Utils.isEmpty( category ) ? category.toLowerCase().contains( "deprecated" ) : false );
+    category = getTranslation( category, packageName, altPackageName, clazz );
+
     String imageFile = extractImageFile( annotation );
     boolean separateClassLoader = extractSeparateClassLoader( annotation );
     String documentationUrl = extractDocumentationUrl( annotation );
@@ -768,7 +913,7 @@ public abstract class BasePluginType implements PluginTypeInterface {
     String suggestion = getTranslation( extractSuggestion( annotation ), packageName, altPackageName, clazz );
     String classLoaderGroup = extractClassLoaderGroup( annotation );
 
-    pluginName += addDeprecation( category );
+    pluginName += addDeprecation( deprecated );
 
     Map<Class<?>, String> classMap = new HashMap<>();
 
@@ -778,12 +923,13 @@ public abstract class BasePluginType implements PluginTypeInterface {
 
     addExtraClasses( classMap, clazz, annotation );
 
-    PluginInterface plugin =
+    Plugin plugin =
       new Plugin(
         ids, this.getClass(), mainType.value(), category, pluginName, description, imageFile, separateClassLoader,
         classLoaderGroup, nativePluginType, classMap, libraries, null, pluginFolder, documentationUrl,
         casesUrl, forumUrl, suggestion );
-
+    plugin.setDeprecated( deprecated );
+    
     ParentFirst parentFirstAnnotation = clazz.getAnnotation( ParentFirst.class );
     if ( parentFirstAnnotation != null ) {
       registry.addParentClassLoaderPatterns( plugin, parentFirstAnnotation.patterns() );
@@ -805,10 +951,9 @@ public abstract class BasePluginType implements PluginTypeInterface {
    */
   protected abstract void addExtraClasses( Map<Class<?>, String> classMap, Class<?> clazz, Annotation annotation );
 
-  private String addDeprecation( String category ) {
-    String deprecated = BaseMessages.getString( PKG, "PluginRegistry.Category.Deprecated" );
-    if ( deprecated.equals( category )  ) {
-      return " (" + deprecated.toLowerCase() + ")";
+  private String addDeprecation( boolean deprecated ) {
+    if ( deprecated ) {
+      return " (" + BaseMessages.getString( PKG, DEPRECATED_CATEGORY_KEY ).toLowerCase() + ")";
     }
     return "";
   }

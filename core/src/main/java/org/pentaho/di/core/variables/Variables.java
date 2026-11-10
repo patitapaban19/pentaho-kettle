@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.variables;
 
@@ -122,20 +114,21 @@ public class Variables implements VariableSpace {
 
   @Override
   public void initializeVariablesFrom( VariableSpace parent ) {
-    this.parent = parent;
-
-    // Clone the system properties to avoid ConcurrentModificationException while iterating
-    // and then add all of them to properties variable.
-    Set<String> systemPropertiesNames = System.getProperties().stringPropertyNames();
-    for ( String key : systemPropertiesNames ) {
-      String value = System.getProperties().getProperty( key );
-      if ( value != null ) {
-        getProperties().put( key, value );
+    // only read these once. Don't overwrite values that have already been set on this variable space from other APIs
+    if ( !initialized ) {
+      // Clone the system properties to avoid ConcurrentModificationException while iterating
+      // and then add all of them to properties variable.
+      Set<String> systemPropertiesNames = System.getProperties().stringPropertyNames();
+      for ( String key : systemPropertiesNames ) {
+        String value = System.getProperties().getProperty( key );
+        if ( value != null ) {
+          getProperties().put( key, value );
+        }
       }
-
     }
 
     if ( parent != null ) {
+      this.parent = parent;
       copyVariablesFrom( parent );
     }
     if ( injection != null ) {
@@ -249,6 +242,9 @@ public class Variables implements VariableSpace {
 
   /**
    * Get a default variable space as a placeholder. Everytime you will get a new instance.
+   * <p/>
+   * This will only include the system-level variables for the kettle engine. For other contexts
+   * @see org.pentaho.di.core.bowl.Bowl#getADefaultVariableSpace()
    *
    * @return a default variable space.
    */

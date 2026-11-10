@@ -1,29 +1,22 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.streaming.common;
 
 import io.reactivex.Flowable;
 import io.reactivex.functions.Consumer;
+import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.RowMetaAndData;
@@ -59,6 +52,7 @@ public class FixedTimeStreamWindow<I extends List> implements StreamWindow<I, Re
   private SubtransExecutor subtransExecutor;
   private int parallelism;
   private final Consumer<Map.Entry<List<I>, Result>> postProcessor;
+  private final Function<List<I>, List<I>> bufferFilter;
   private int sharedStreamingBatchPoolSize = 0;
   private static ThreadPoolExecutor sharedStreamingBatchPool;
   private final int rxBatchCount;
@@ -70,12 +64,18 @@ public class FixedTimeStreamWindow<I extends List> implements StreamWindow<I, Re
 
   public FixedTimeStreamWindow( SubtransExecutor subtransExecutor, RowMetaInterface rowMeta, long millis,
                                 int batchSize, int parallelism, Consumer<Map.Entry<List<I>, Result>> postProcessor ) {
+    this( subtransExecutor, rowMeta, millis, batchSize, parallelism, postProcessor, ( p ) -> p );
+  }
+
+  public FixedTimeStreamWindow( SubtransExecutor subtransExecutor, RowMetaInterface rowMeta, long millis,
+                                int batchSize, int parallelism, Consumer<Map.Entry<List<I>, Result>> postProcessor, Function<List<I>, List<I>> bufferFilter ) {
     this.subtransExecutor = subtransExecutor;
     this.rowMeta = rowMeta;
     this.millis = millis;
     this.batchSize = batchSize;
     this.parallelism = parallelism;
     this.postProcessor = postProcessor;
+    this.bufferFilter = bufferFilter;
 
     //When only batchSize is provided and it is greater than 0 and less than the prefetchCount we can exactly
     //calculate how many batches rx will have to handle. When a time value is provided handle the full prefetchCount
@@ -90,8 +90,8 @@ public class FixedTimeStreamWindow<I extends List> implements StreamWindow<I, Re
           sharedStreamingBatchPool = (ThreadPoolExecutor) Executors.newFixedThreadPool( sharedStreamingBatchPoolSize );
         } else {
           if ( sharedStreamingBatchPool.getCorePoolSize() != sharedStreamingBatchPoolSize ) {
-            sharedStreamingBatchPool.setCorePoolSize( sharedStreamingBatchPoolSize );
             sharedStreamingBatchPool.setMaximumPoolSize( sharedStreamingBatchPoolSize );
+            sharedStreamingBatchPool.setCorePoolSize( sharedStreamingBatchPoolSize );
           }
         }
       }
@@ -110,6 +110,8 @@ public class FixedTimeStreamWindow<I extends List> implements StreamWindow<I, Re
       .runOn( sharedStreamingBatchPoolSize > 0 ? Schedulers.from( sharedStreamingBatchPool ) : Schedulers.io(),
         rxBatchCount )
       .filter( list -> !list.isEmpty() )
+      .map( this.bufferFilter ) // apply any filtering for data that should no longer be processed
+      .filter( list -> !list.isEmpty() ) // ensure at least one record is left before sending to subtrans
       .map( this::sendBufferToSubtrans )
       .filter( Optional::isPresent )
       .map( Optional::get )

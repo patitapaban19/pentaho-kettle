@@ -1,26 +1,27 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.trans.steps.fileinput.text;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.vfs2.FileContent;
@@ -32,6 +33,7 @@ import org.mockito.Mockito;
 import org.mockito.stubbing.Answer;
 import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.RowSet;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.exception.KettleFileException;
 import org.pentaho.di.core.fileinput.FileInputList;
 import org.pentaho.di.core.logging.LogChannelInterface;
@@ -40,8 +42,8 @@ import org.pentaho.di.core.row.RowMeta;
 import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaString;
 import org.pentaho.di.core.util.Assert;
-import org.pentaho.di.core.variables.Variables;
 import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.variables.Variables;
 import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.trans.Trans;
@@ -57,21 +59,14 @@ import org.pentaho.di.trans.steps.file.IBaseFileInputReader;
 import org.pentaho.di.trans.steps.file.IBaseFileInputStepControl;
 import org.pentaho.di.utils.TestUtils;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.UnsupportedEncodingException;
-import java.util.ArrayList;
-import java.util.List;
-
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.anyString;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 public class TextFileInputTest {
+  public static final String TEST_TXT = "test.txt";
   @ClassRule public static RestorePDIEngineEnvironment env = new RestorePDIEngineEnvironment();
 
   @BeforeClass
@@ -79,8 +74,9 @@ public class TextFileInputTest {
     KettleEnvironment.init();
   }
 
-  private static InputStreamReader getInputStreamReader( String data ) throws UnsupportedEncodingException {
-    return new InputStreamReader( new ByteArrayInputStream( data.getBytes( ( "UTF-8" ) ) ) );
+  private static BufferedInputStreamReader getInputStreamReader( String data ) throws UnsupportedEncodingException {
+    return new BufferedInputStreamReader(
+      new InputStreamReader( new ByteArrayInputStream( data.getBytes( ( "UTF-8" ) ) ) ) );
   }
 
   @Test
@@ -120,6 +116,16 @@ public class TextFileInputTest {
     String output =
         TextFileInputUtils.getLine( null, getInputStreamReader( input ), TextFileInputMeta.FILE_FORMAT_MIXED,
             new StringBuilder( 1000 ) );
+    assertEquals( expected, output );
+  }
+
+  @Test
+  public void testGetLineMixedOS9() throws KettleFileException, UnsupportedEncodingException {
+    String input = "col1\tcol2\tcol3\rdata1\tdata2\tdata3\r";
+    String expected = "col1\tcol2\tcol3";
+    String output =
+      TextFileInputUtils.getLine( null, getInputStreamReader( input ), TextFileInputMeta.FILE_FORMAT_MIXED,
+        new StringBuilder( 1000 ) );
     assertEquals( expected, output );
   }
 
@@ -211,6 +217,7 @@ public class TextFileInputTest {
 
     deleteVfsFile( virtualFile );
   }
+
   @Test
   public void testErrorHandlerLineNumber() throws Exception {
     final String content = new StringBuilder()
@@ -276,7 +283,7 @@ public class TextFileInputTest {
     meta.inputFiles.acceptingFilenames = true;
     TextFileInputData data = createDataObject( virtualFile, ",", "col1", "col2" );
 
-    TextFileInput input = Mockito.spy( StepMockUtil.getStep( TextFileInput.class, TextFileInputMeta.class, "test" ) );
+    TextFileInput input = spy( StepMockUtil.getStep( TextFileInput.class, TextFileInputMeta.class, "test" ) );
 
     RowSet rowset = Mockito.mock( RowSet.class );
     RowMetaInterface rwi = Mockito.mock( RowMetaInterface.class );
@@ -287,6 +294,7 @@ public class TextFileInputTest {
     Mockito.when( input.getRowFrom( rowset ) ).thenReturn( obj1, obj2, null );
     Mockito.doReturn( rwi ).when( rowset ).getRowMeta();
     Mockito.when( rwi.getString( obj2, 0 ) ).thenReturn( "filename1", "filename2" );
+    Mockito.when( input.getTransMeta().getBowl() ).thenReturn( DefaultBowl.getInstance() );
     List<Object[]> output = TransTestingUtil.execute( input, meta, data, 0, false );
 
     List<String> passThroughKeys = new ArrayList<>( data.passThruFields.keySet() );
@@ -327,9 +335,9 @@ public class TextFileInputTest {
     meta.inputFiles.passingThruFields = true;
     meta.inputFiles.acceptingFilenames = true;
     TextFileInputData data = createDataObject( virtualFile, ",", "col1", "col2" );
-    data.files.addFile( KettleVFS.getFileObject( virtualFile2 ) );
+    data.files.addFile( KettleVFS.getInstance( DefaultBowl.getInstance() ).getFileObject( virtualFile2 ) );
 
-    TextFileInput input = Mockito.spy( StepMockUtil.getStep( TextFileInput.class, TextFileInputMeta.class, "test" ) );
+    TextFileInput input = spy( StepMockUtil.getStep( TextFileInput.class, TextFileInputMeta.class, "test" ) );
 
 
     RowSet rowset = Mockito.mock( RowSet.class );
@@ -342,6 +350,7 @@ public class TextFileInputTest {
     Mockito.when( input.getTransMeta().listVariables() ).thenReturn( space.listVariables() );
     Mockito.when( input.getTransMeta().getVariable( anyString() ) ).thenAnswer( (Answer<String>)
       invocation -> space.getVariable( (String) invocation.getArguments()[0] ) );
+    Mockito.when( input.getTransMeta().getBowl() ).thenReturn( DefaultBowl.getInstance() );
 
     Mockito.doReturn( rwi ).when( rowset ).getRowMeta();
     Mockito.when( rwi.getString( obj2, 0 ) ).thenReturn( "ram:///." );
@@ -478,7 +487,7 @@ public class TextFileInputTest {
                                               String... outputFields ) throws Exception {
     TextFileInputData data = new TextFileInputData();
     data.files = new FileInputList();
-    data.files.addFile( KettleVFS.getFileObject( file ) );
+    data.files.addFile( KettleVFS.getInstance( DefaultBowl.getInstance() ).getFileObject( file ) );
 
     data.separator = separator;
 
@@ -495,6 +504,7 @@ public class TextFileInputTest {
     data.filePlayList = new FilePlayListAll();
     return data;
   }
+
   private static String createVirtualFile( String filename, String... rows ) throws Exception {
     String virtualFile = TestUtils.createRamFile( filename );
 
@@ -507,7 +517,8 @@ public class TextFileInputTest {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
     bos.write( content.toString().getBytes() );
 
-    try ( OutputStream os = KettleVFS.getFileObject( virtualFile ).getContent().getOutputStream() ) {
+    try ( OutputStream os = KettleVFS.getInstance( DefaultBowl.getInstance() )
+          .getFileObject( virtualFile ).getContent().getOutputStream() ) {
       IOUtils.copy( new ByteArrayInputStream( bos.toByteArray() ), os );
     }
 
@@ -536,4 +547,5 @@ public class TextFileInputTest {
       throw new Exception( "Can not create reader for the file object " + file );
     }
   }
+
 }

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2018 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.spoon.tree;
 
@@ -29,8 +21,9 @@ import org.pentaho.di.ui.core.widget.tree.TreeNode;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
+import java.util.Set;
 
 /**
  * Created by bmorrise on 7/9/18.
@@ -38,8 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RootNode extends TreeNode {
 
   private List<TreeFolderProvider> treeFolderProviders = new ArrayList<>();
-  private Map<AbstractMeta, TreeNode> abstractMetas = new ConcurrentHashMap<>();
-  private Map<AbstractMeta, String> updates = new ConcurrentHashMap<>();
+  Set<String> updates = ConcurrentHashMap.newKeySet();
 
   public RootNode( String label, Image image, boolean expanded ) {
     super( label, image, expanded );
@@ -47,34 +39,21 @@ public class RootNode extends TreeNode {
 
   public void addProvider( TreeFolderProvider treeFolderProvider ) {
     treeFolderProviders.add( treeFolderProvider );
+    treeFolderProvider.create( Optional.empty(), this );
   }
 
   public void addProviders( List<TreeFolderProvider> treeFolderProviders ) {
     this.treeFolderProviders.addAll( treeFolderProviders );
+    treeFolderProviders.forEach( tfp -> tfp.create( Optional.empty(), this ) );
   }
 
-  public void addAbstractMeta( AbstractMeta abstractMeta, TreeNode treeNode ) {
-    abstractMetas.put( abstractMeta, treeNode );
-  }
-
-  public TreeNode create( AbstractMeta abstractMeta, Image image, boolean expanded ) {
-    TreeNode treeNode = new TreeNode( abstractMeta.getName(), image, expanded );
-    addChild( treeNode );
-    addAbstractMeta( abstractMeta, treeNode );
-    treeFolderProviders.forEach( treeFolderProvider -> treeFolderProvider.create( abstractMeta, treeNode ) );
-    return treeNode;
-  }
-
-  public void checkUpdate( AbstractMeta abstractMeta, String filter ) {
-    TreeNode treeNode = abstractMetas.get( abstractMeta );
-    if ( treeNode != null ) {
-      for ( TreeFolderProvider treeFolderProvider : treeFolderProviders ) {
-        TreeNode childTreeNode = getChildTreeNode( treeNode, treeFolderProvider.getTitle() );
-        if ( childTreeNode != null ) {
-          treeFolderProvider.checkUpdate( abstractMeta, childTreeNode, filter );
-          if ( !Utils.isEmpty( filter ) ) {
-            childTreeNode.setExpanded( true );
-          }
+  public void checkUpdate( Optional<AbstractMeta> abstractMeta, String filter ) {
+    for ( TreeFolderProvider treeFolderProvider : treeFolderProviders ) {
+      TreeNode childTreeNode = getChildTreeNode( this, treeFolderProvider.getTitle() );
+      if ( childTreeNode != null ) {
+        treeFolderProvider.checkUpdate( abstractMeta, childTreeNode, filter );
+        if ( !Utils.isEmpty( filter ) ) {
+          childTreeNode.setExpanded( true );
         }
       }
     }
@@ -89,7 +68,7 @@ public class RootNode extends TreeNode {
     return null;
   }
 
-  public String getNameByType( Class clazz ) {
+  public String getNameByType( Class<?> clazz ) {
     TreeFolderProvider treeFolderProvider = treeFolderProviders.stream()
             .filter( treeFolderProvider1 -> treeFolderProvider1.getType().equals( clazz ) )
             .findFirst()
@@ -100,30 +79,21 @@ public class RootNode extends TreeNode {
     return null;
   }
 
-  public void remove( AbstractMeta abstractMeta ) {
-    abstractMetas.remove( abstractMeta );
-  }
-
-  public TreeNode getTreeNode( AbstractMeta abstractMeta ) {
-    return abstractMetas.get( abstractMeta );
+  public void updateAll() {
+    for ( TreeFolderProvider tfp : treeFolderProviders ) {
+      update( tfp.getTitle() );
+    }
   }
 
   public void update( String name ) {
-    abstractMetas.keySet().forEach( abstractMeta -> updates.put( abstractMeta, name ) );
+    updates.add( name );
   }
 
-  public void clearUpdates( AbstractMeta abstractMeta ) {
-    updates.remove( abstractMeta );
+  public void clearUpdates() {
+    updates.clear();
   }
 
-  public boolean hasNode( AbstractMeta abstractMeta ) {
-    return abstractMetas.containsKey( abstractMeta );
-  }
-
-  public boolean shouldUpdate( AbstractMeta abstractMeta, String name ) {
-    if ( updates.containsKey( abstractMeta ) && updates.get( abstractMeta ).equalsIgnoreCase( name ) ) {
-      return true;
-    }
-    return false;
+  public boolean shouldUpdate( String name ) {
+    return updates.contains( name );
   }
 }

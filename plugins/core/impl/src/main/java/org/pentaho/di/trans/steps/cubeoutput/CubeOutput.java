@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.cubeoutput;
 
@@ -183,13 +175,13 @@ public class CubeOutput extends BaseStep implements StepInterface {
         // Add this to the result file names...
         ResultFile resultFile =
           new ResultFile(
-            ResultFile.FILE_TYPE_GENERAL, KettleVFS.getFileObject( filename, getTransMeta() ), getTransMeta()
-              .getName(), getStepname() );
+            ResultFile.FILE_TYPE_GENERAL, KettleVFS.getInstance( getTransMeta().getBowl() )
+              .getFileObject( filename, getTransMeta() ), getTransMeta().getName(), getStepname() );
         resultFile.setComment( "This file was created with a cube file output step" );
         addResultFile( resultFile );
       }
 
-      data.fos = KettleVFS.getOutputStream( filename, getTransMeta(), false );
+      data.fos = KettleVFS.getInstance( getTransMeta().getBowl() ).getOutputStream( filename, getTransMeta(), false );
       data.zip = new GZIPOutputStream( data.fos );
       data.dos = new DataOutputStream( data.zip );
     } catch ( Exception e ) {

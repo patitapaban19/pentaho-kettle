@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core;
 
@@ -420,15 +412,18 @@ public class Condition implements Cloneable, XMLInterface {
             retval = ( fieldMeta.compare( field, fieldMeta2, field2 ) != 0 );
             break;
           case FUNC_SMALLER:
-            if ( fieldMeta.isNull( field ) ) {
-              // BACKLOG-18831
+            // Added this if/else to accommodate for CUST-270
+            if ( "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_FILTER_TREAT_NULLS_AS_NOT_ZERO, "N" ) )
+              && fieldMeta.isNull( field ) ) {
               retval = false;
             } else {
               retval = ( fieldMeta.compare( field, fieldMeta2, field2 ) < 0 );
             }
             break;
           case FUNC_SMALLER_EQUAL:
-            if ( fieldMeta.isNull( field ) ) {
+            // Added this if/else to accommodate for CUST-270
+            if ( "Y".equalsIgnoreCase( System.getProperty( Const.KETTLE_FILTER_TREAT_NULLS_AS_NOT_ZERO, "N" ) )
+              && fieldMeta.isNull( field ) ) {
               retval = false;
             } else {
               retval = ( fieldMeta.compare( field, fieldMeta2, field2 ) <= 0 );
@@ -822,9 +817,25 @@ public class Condition implements Cloneable, XMLInterface {
       int nrconditions = XMLHandler.countNodes( conditions, XML_TAG );
       if ( nrconditions == 0 ) {
         // ATOMIC!
-        setLeftValuename( XMLHandler.getTagValue( condnode, "leftvalue" ) );
+        String leftValueName = XMLHandler.getTagValue( condnode, "leftvalue" );
+        // When Const.KETTLE_XML_EMPTY_TAG_YIELDS_EMPTY_VALUE=Y, an empty tag (<leftvalue/>) becomes "".
+        // Treat that the same as null, otherwise we may try to resolve a field with an empty name.
+        if ( Utils.isEmpty( leftValueName ) ) {
+          leftValueName = null;
+        }
+        setLeftValuename( leftValueName );
+
         setFunction( getFunction( XMLHandler.getTagValue( condnode, "function" ) ) );
-        setRightValuename( XMLHandler.getTagValue( condnode, "rightvalue" ) );
+
+        String rightValueName = XMLHandler.getTagValue( condnode, "rightvalue" );
+        // When Const.KETTLE_XML_EMPTY_TAG_YIELDS_EMPTY_VALUE=Y, an empty tag (<rightvalue/>) becomes "".
+        // Treat that the same as null, otherwise downstream code (notably UI rendering) may think a field was chosen
+        // and hide the right-exact constant.
+        if ( Utils.isEmpty( rightValueName ) ) {
+          rightValueName = null;
+        }
+        setRightValuename( rightValueName );
+
         Node exactnode = XMLHandler.getSubNode( condnode, ValueMetaAndData.XML_TAG );
         if ( exactnode != null ) {
           ValueMetaAndData exact = new ValueMetaAndData( exactnode );

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.regexeval;
 
@@ -27,7 +19,6 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.junit.runner.RunWith;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.KettleEnvironment;
 import org.pentaho.di.core.row.RowMeta;
@@ -38,12 +29,11 @@ import org.pentaho.di.trans.TransTestingUtil;
 import org.pentaho.di.trans.step.StepDataInterface;
 import org.pentaho.di.trans.steps.StepMockUtil;
 import org.pentaho.di.trans.steps.mock.StepMockHelper;
-import org.powermock.modules.junit4.PowerMockRunner;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
-import java.util.Arrays;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -51,7 +41,6 @@ import static org.mockito.Mockito.when;
 /**
  * @author Andrey Khayrutdinov
  */
-@RunWith( PowerMockRunner.class )
 public class RegexEval_EmptyStringVsNull_Test {
   private StepMockHelper<RegexEvalMeta, StepDataInterface> helper;
   @ClassRule public static RestorePDIEngineEnvironment env = new RestorePDIEngineEnvironment();
@@ -127,7 +116,7 @@ public class RegexEval_EmptyStringVsNull_Test {
     TransTestingUtil.assertResult( expected, actual );
   }
 
-  private RegexEval createAndInitStep( RegexEvalMeta meta, RegexEvalData data ) throws Exception {
+  private RegexEval createAndInitStep( RegexEvalMeta meta, RegexEvalData data ) {
     when( helper.stepMeta.getStepMetaInterface() ).thenReturn( meta );
 
     RegexEval step = new RegexEval( helper.stepMeta, data, 0, helper.transMeta, helper.trans );

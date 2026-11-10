@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.trans.step;
 
@@ -342,7 +334,8 @@ public abstract class BaseStreamingDialog extends BaseStepDialog implements Step
       saved = spoonInstance.saveXMLFile( newSubTransMeta, false );
       if ( saved ) {
         try {
-          path = getRelativePath( KettleVFS.getFileObject( newSubTransMeta.getFilename() ).toString() );
+          path = getRelativePath( KettleVFS.getInstance( transMeta.getBowl() )
+                                  .getFileObject( newSubTransMeta.getFilename() ).toString() );
         } catch ( KettleFileException e ) {
           new ErrorDialog( shell, BaseMessages.getString( PKG, "BaseStreamingDialog.File.Save.Fail.Title" ),
             BaseMessages.getString(
@@ -401,8 +394,6 @@ public abstract class BaseStreamingDialog extends BaseStepDialog implements Step
 
     newTransMeta.setMetaStore( spoonInstance.getMetaStore() );
     try {
-      SharedObjects sharedObjects = newTransMeta.readSharedObjects();
-      newTransMeta.setSharedObjects( sharedObjects );
       newTransMeta.importFromMetaStore();
       newTransMeta.clearChanged();
     } catch ( Exception e ) {
@@ -595,7 +586,7 @@ public abstract class BaseStreamingDialog extends BaseStepDialog implements Step
   private TransMeta getMappingMeta() throws KettleException {
     BaseStreamStepMeta baseMeta = (BaseStreamStepMeta) meta.clone();
     updateMeta( baseMeta );
-    return  loadMappingMeta( baseMeta, getRepository(), getMetaStore(), transMeta );
+    return  loadMappingMeta( transMeta.getBowl(), baseMeta, getRepository(), getMetaStore(), transMeta );
   }
 
   private Image getImage() {
@@ -673,8 +664,8 @@ public abstract class BaseStreamingDialog extends BaseStepDialog implements Step
   protected String getRelativePath( String filePath ) {
     String parentFolder = null;
     try {
-      parentFolder =
-        KettleVFS.getFileObject( transMeta.environmentSubstitute( transMeta.getFilename() ) ).getParent().toString();
+      parentFolder = KettleVFS.getInstance( transMeta.getBowl() )
+        .getFileObject( transMeta.environmentSubstitute( transMeta.getFilename() ) ).getParent().toString();
     } catch ( Exception e ) {
       // Take no action
     }

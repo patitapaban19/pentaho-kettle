@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.www;
 
@@ -27,9 +19,9 @@ import java.io.PrintWriter;
 import java.net.URLEncoder;
 import java.util.UUID;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import com.google.common.annotations.VisibleForTesting;
 import org.owasp.encoder.Encode;
@@ -37,8 +29,6 @@ import org.pentaho.di.core.Const;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.KettleLogStore;
-import org.pentaho.di.core.logging.LoggingObjectType;
-import org.pentaho.di.core.logging.SimpleLoggingObject;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.Job;
@@ -170,20 +160,22 @@ public class StartJobServlet extends BaseHttpServlet implements CartePluginInter
 
     String jobName = request.getParameter( "name" );
     String id = request.getParameter( "id" );
+    String fetchJobConfigFromEntryStr = request.getParameter( "fetchJobConfigFromEntry" );
     boolean useXML = "Y".equalsIgnoreCase( request.getParameter( "xml" ) );
+    boolean fetchJobConfigFromEntry = "Y".equalsIgnoreCase( fetchJobConfigFromEntryStr );
 
     response.setStatus( HttpServletResponse.SC_OK );
 
     PrintWriter out = response.getWriter();
 
-    //jobName is a mandatory parameter
+    //Either jobName or id is required parameter
     String h1End = "</H1>";
     String h1 = "<H1>";
     String hrefEnd = "</a><p>";
     String href = "<a href=\"";
-    if ( jobName == null ) {
+    if ( jobName == null && id == null ) {
       response.setStatus( HttpServletResponse.SC_BAD_REQUEST );
-      String message = BaseMessages.getString( PKG, "StartJobServlet.Log.JobNameIsMandatory" );
+      String message = BaseMessages.getString( PKG, "StartJobServlet.Log.JobNameOrIdIsMandatory" );
       if ( useXML ) {
         response.setContentType( "text/xml" );
         response.setCharacterEncoding( Const.XML_ENCODING );
@@ -246,6 +238,9 @@ public class StartJobServlet extends BaseHttpServlet implements CartePluginInter
         //
         entry = new CarteObjectEntry( jobName, id );
         job = getJobMap().getJob( entry );
+        if ( job != null && job.getJobMeta() != null ) {
+          jobName = job.getJobMeta().getName(); //get the correct jobName
+        }
       }
 
       if ( job != null ) {
@@ -272,14 +267,11 @@ public class StartJobServlet extends BaseHttpServlet implements CartePluginInter
           // the new job in the job map
           //
           synchronized ( this ) {
-            JobConfiguration jobConfiguration = getJobMap().getConfiguration( jobName );
+            JobConfiguration jobConfiguration = fetchJobConfigFromEntry ? getJobMap().getConfiguration( entry ) :
+                getJobMap().getConfiguration( jobName );
 
             String carteObjectId = UUID.randomUUID().toString();
-            SimpleLoggingObject servletLoggingObject =
-              new SimpleLoggingObject( CONTEXT_PATH, LoggingObjectType.CARTE, null );
-            servletLoggingObject.setContainerObjectId( carteObjectId );
-
-            Job newJob = new Job( job.getRep(), job.getJobMeta(), servletLoggingObject );
+            Job newJob = BaseJobServlet.createJob( this, CONTEXT_PATH, carteObjectId, jobConfiguration );
             newJob.setLogLevel( job.getLogLevel() );
 
             // Discard old log lines from the old job

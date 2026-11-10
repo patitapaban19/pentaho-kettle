@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.core.database;
 
 import org.junit.Before;
@@ -30,6 +22,8 @@ import org.pentaho.di.core.row.value.ValueMetaString;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
@@ -131,5 +125,20 @@ public class AzureSqlDataBaseMetaTest {
     ValueMetaString ts = new ValueMetaString( "AzureDB" );
     dbMeta.getValueFromResultSet( rs,ts,2 );
   }
+  @Test
+  public void setConnectionSpecificInfoFromAttributes_setsAllAttributes() {
+    dbMeta = new AzureSqlDataBaseMeta();
+    Map<String, String> attributes = new HashMap<>();
+    attributes.put( AzureSqlDataBaseMeta.JDBC_AUTH_METHOD, "SQL Server Authentication" );
+    attributes.put( AzureSqlDataBaseMeta.CLIENT_ID, "testClientId"  );
+    attributes.put( AzureSqlDataBaseMeta.CLIENT_SECRET_KEY, "testClientSecret"  );
+    attributes.put( AzureSqlDataBaseMeta.IS_ALWAYS_ENCRYPTION_ENABLED, "true" );
 
+    dbMeta.setConnectionSpecificInfoFromAttributes( attributes );
+
+    assertEquals( "SQL Server Authentication", dbMeta.getAttribute( AzureSqlDataBaseMeta.JDBC_AUTH_METHOD, "" ) );
+    assertEquals( "testClientId", dbMeta.getAttribute( AzureSqlDataBaseMeta.CLIENT_ID, "" ) );
+    assertEquals( "testClientSecret", dbMeta.getAttribute( AzureSqlDataBaseMeta.CLIENT_SECRET_KEY, "" ) );
+    assertEquals( "true", dbMeta.getAttribute( AzureSqlDataBaseMeta.IS_ALWAYS_ENCRYPTION_ENABLED, "" ) );
+  }
 }

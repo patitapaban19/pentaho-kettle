@@ -1,23 +1,23 @@
-/*!
- * Copyright 2010 - 2019 Hitachi Vantara.  All rights reserved.
+/*! ******************************************************************************
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Pentaho
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- */
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
 package com.pentaho.repository.importexport;
 
+import org.junit.BeforeClass;
 import org.junit.ClassRule;
 import org.junit.Test;
+import org.pentaho.di.base.AbstractMeta;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.extension.ExtensionPointInterface;
@@ -29,7 +29,9 @@ import org.pentaho.di.core.plugins.PluginInterface;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.repository.Repository;
+import org.pentaho.di.repository.RepositoryBowl;
 import org.pentaho.di.repository.StringObjectId;
+import org.pentaho.di.shared.MemorySharedObjectsIO;
 import org.pentaho.di.trans.TransMeta;
 import org.pentaho.platform.api.repository2.unified.ConverterException;
 import org.pentaho.platform.api.repository2.unified.IUnifiedRepository;
@@ -37,15 +39,12 @@ import org.pentaho.platform.api.repository2.unified.RepositoryFile;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.same;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -61,6 +60,11 @@ public class StreamToTransNodeConverterTest {
   interface PluginMockInterface extends ClassLoadingPluginInterface, PluginInterface {
   }
 
+  @BeforeClass
+  public static void setupClass() {
+    DefaultBowl.getInstance().setSharedObjectsIO( new MemorySharedObjectsIO() );
+  }
+
   @Test
   public void convertPostRepoSave() throws Exception {
     StreamToTransNodeConverter converter = mock( StreamToTransNodeConverter.class );
@@ -69,7 +73,7 @@ public class StreamToTransNodeConverterTest {
     when( converter.connectToRepository() ).thenReturn( repository );
 
     TransMeta transMeta = mock( TransMeta.class );
-    when( repository.loadTransformation( any(), anyString() ) ).thenReturn( transMeta );
+    when( repository.loadTransformation( any(), any() ) ).thenReturn( transMeta );
     RepositoryFile file = mock( RepositoryFile.class );
     when( file.getId() ).thenReturn( "fileId" );
 
@@ -99,6 +103,8 @@ public class StreamToTransNodeConverterTest {
 
     Repository repository = mock( Repository.class );
     when( repository.loadTransformation( any( StringObjectId.class ), anyString() ) ).thenReturn( transMeta );
+    when( repository.getBowl() ).thenReturn( new RepositoryBowl( repository ) );
+
 
     StreamToTransNodeConverter transNodeConverter = new StreamToTransNodeConverter( pur );
     transNodeConverter = spy( transNodeConverter );
@@ -113,62 +119,6 @@ public class StreamToTransNodeConverterTest {
     fail();
   }
 
-  @Test
-  public void filterPrivateDatabasesWithOnePrivateDatabaseTest() {
-    IUnifiedRepository purMock = mock( IUnifiedRepository.class );
-    TransMeta transMeta = new TransMeta(  );
-    transMeta.setDatabases( getDummyDatabases() );
-    Set<String> privateDatabases = new HashSet<>(  );
-    privateDatabases.add( "database2" );
-    transMeta.setPrivateDatabases( privateDatabases );
-    StreamToTransNodeConverter transConverter = new StreamToTransNodeConverter( purMock );
-    assertEquals( 1, transConverter.filterPrivateDatabases( transMeta ).getDatabases().size() );
-  }
-
-  @Test
-  public void filterPrivateDatabasesWithOnePrivateDatabaseAndOneInUseTest() {
-    IUnifiedRepository purMock = mock( IUnifiedRepository.class );
-    TransMeta transMeta = spy( TransMeta.class );
-    transMeta.setDatabases( getDummyDatabases() );
-    Set<String> privateDatabases = new HashSet<>(  );
-    privateDatabases.add( "database2" );
-    transMeta.setPrivateDatabases( privateDatabases );
-    when( transMeta.isDatabaseConnectionUsed( getDummyDatabases().get( 0 ) ) ).thenReturn( true );
-    StreamToTransNodeConverter transConverter = new StreamToTransNodeConverter( purMock );
-    assertEquals( 2, transConverter.filterPrivateDatabases( transMeta ).getDatabases().size() );
-  }
-
-  @Test
-  public void filterPrivateDatabasesWithOneInUseTest() {
-    IUnifiedRepository purMock = mock( IUnifiedRepository.class );
-    TransMeta transMeta = spy( TransMeta.class );
-    transMeta.setDatabases( getDummyDatabases() );
-    transMeta.setPrivateDatabases( new HashSet<>(  ) );
-    when( transMeta.isDatabaseConnectionUsed( getDummyDatabases().get( 0 ) ) ).thenReturn( true );
-    StreamToTransNodeConverter transConverter = new StreamToTransNodeConverter( purMock );
-    assertEquals( 1, transConverter.filterPrivateDatabases( transMeta ).getDatabases().size() );
-  }
-
-  @Test
-  public void filterPrivateDatabasesNoPrivateDatabaseTest() {
-    IUnifiedRepository purMock = mock( IUnifiedRepository.class );
-    TransMeta transMeta = new TransMeta(  );
-    transMeta.setDatabases( getDummyDatabases() );
-    transMeta.setPrivateDatabases( new HashSet<>(  ) );
-    StreamToTransNodeConverter transConverter = new StreamToTransNodeConverter( purMock );
-    assertEquals( 0, transConverter.filterPrivateDatabases( transMeta ).getDatabases().size() );
-  }
-
-  @Test
-  public void filterPrivateDatabasesNullPrivateDatabaseTest() {
-    IUnifiedRepository purMock = mock( IUnifiedRepository.class );
-    TransMeta transMeta = new TransMeta(  );
-    transMeta.setDatabases( getDummyDatabases() );
-    transMeta.setPrivateDatabases( null );
-    StreamToTransNodeConverter transConverter = new StreamToTransNodeConverter( purMock );
-    assertEquals( transMeta.getDatabases().size(), transConverter.filterPrivateDatabases( transMeta ).getDatabases().size() );
-  }
-
   private List<DatabaseMeta> getDummyDatabases() {
     List<DatabaseMeta> databases = new ArrayList<>(  );
     databases.add( new DatabaseMeta( "database1", "Oracle", "Native", "", "", "", "", "" ) );
@@ -177,4 +127,12 @@ public class StreamToTransNodeConverterTest {
     databases.add( new DatabaseMeta( "database4", "Oracle", "Native", "", "", "", "", "" ) );
     return databases;
   }
+
+  private void setDatabases( AbstractMeta meta, List<DatabaseMeta> databases ) throws Exception {
+    meta.getDatabaseManagementInterface().clear();
+    for ( DatabaseMeta db : databases ) {
+      meta.getDatabaseManagementInterface().add( db );
+    }
+  }
 }
+

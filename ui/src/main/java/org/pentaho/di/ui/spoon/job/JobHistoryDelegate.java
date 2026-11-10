@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.spoon.job;
 
@@ -261,7 +253,7 @@ public class JobHistoryDelegate extends SpoonDelegate implements XulEventHandler
             BaseMessages.getString( PKG, "JobGraph.Dialog.ErrorClearningLoggingTable.Title" ),
             BaseMessages.getString( PKG, "JobGraph.Dialog.AreYouSureYouWantToRemoveAllLogEntries.Message" ), e );
         } finally {
-          database.disconnect();
+          database.close();
 
           refreshHistory();
           if ( model.logDisplayText != null ) {
@@ -335,7 +327,7 @@ public class JobHistoryDelegate extends SpoonDelegate implements XulEventHandler
             }
 
           } finally {
-            db.disconnect();
+            db.close();
           }
 
           gotResults = true;
@@ -574,7 +566,7 @@ public class JobHistoryDelegate extends SpoonDelegate implements XulEventHandler
    */
   @VisibleForTesting
   Map<String, Integer> getColumnMappings( JobHistoryDelegate.JobHistoryLogTab model ) {
-    Map<String, Integer> map = new HashMap();
+    Map<String, Integer> map = new HashMap<>();
 
     for ( ColumnInfo ci : model.logDisplayTableView.getColumns() ) {
       for ( int i = 0; i < model.logTableFields.size(); i++ ) {

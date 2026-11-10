@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.trans.steps.textfileinput;
 
@@ -49,6 +41,7 @@ import org.pentaho.di.core.util.StringEvaluationResult;
 import org.pentaho.di.core.util.StringEvaluator;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.trans.TransMeta;
+import org.pentaho.di.trans.steps.fileinput.text.BufferedInputStreamReader;
 import org.pentaho.di.trans.steps.fileinput.text.TextFileInputUtils;
 import org.pentaho.di.trans.steps.fileinput.text.EncodingType;
 import org.pentaho.di.trans.steps.fileinput.text.TextFileLine;
@@ -84,7 +77,7 @@ public class TextFileCSVImportProgressDialog implements CsvInputAwareImportProgr
 
   private long rownumber;
 
-  private InputStreamReader reader;
+  private BufferedInputStreamReader reader;
 
   private TransMeta transMeta;
 
@@ -93,11 +86,20 @@ public class TextFileCSVImportProgressDialog implements CsvInputAwareImportProgr
   private EncodingType encodingType;
 
   /**
+   * @deprecated construct with BufferedInputStreamReader
+   */
+  @Deprecated
+  public TextFileCSVImportProgressDialog( Shell shell, InputFileMetaInterface meta, TransMeta transMeta,
+                                          InputStreamReader reader, int samples, boolean replaceMeta ) {
+    this( shell, meta, transMeta, new BufferedInputStreamReader( reader ), samples, replaceMeta );
+  }
+
+  /**
    * Creates a new dialog that will handle the wait while we're finding out what tables, views etc we can reach in the
    * database.
    */
   public TextFileCSVImportProgressDialog( Shell shell, InputFileMetaInterface meta, TransMeta transMeta,
-    InputStreamReader reader, int samples, boolean replaceMeta ) {
+    BufferedInputStreamReader reader, int samples, boolean replaceMeta ) {
     this.shell = shell;
     this.meta = meta;
     this.reader = reader;
@@ -176,7 +178,7 @@ public class TextFileCSVImportProgressDialog implements CsvInputAwareImportProgr
     int nrfields = meta.getInputFields().length;
 
     RowMetaInterface outputRowMeta = new RowMeta();
-    meta.getFields( outputRowMeta, null, null, null, transMeta, null, null );
+    meta.getFields( transMeta.getBowl(), outputRowMeta, null, null, null, transMeta, null, null );
 
     // Remove the storage meta-data (don't go for lazy conversion during scan)
     for ( ValueMetaInterface valueMeta : outputRowMeta.getValueMetaList() ) {
@@ -297,7 +299,7 @@ public class TextFileCSVImportProgressDialog implements CsvInputAwareImportProgr
         debug = "convert line #" + linenr + " to row";
       }
       RowMetaInterface rowMeta = new RowMeta();
-      meta.getFields( rowMeta, "stepname", null, null, transMeta, null, null );
+      meta.getFields( transMeta.getBowl(), rowMeta, "stepname", null, null, transMeta, null, null );
       // Remove the storage meta-data (don't go for lazy conversion during scan)
       for ( ValueMetaInterface valueMeta : rowMeta.getValueMetaList() ) {
         valueMeta.setStorageMetadata( null );

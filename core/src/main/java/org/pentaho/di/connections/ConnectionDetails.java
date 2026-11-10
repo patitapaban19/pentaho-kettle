@@ -1,26 +1,23 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
 
+
+
 package org.pentaho.di.connections;
+
+import org.pentaho.di.connections.utils.ConnectionDetailsUtils;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.metastore.api.exceptions.MetaStoreException;
 
 import java.util.Collections;
 import java.util.Map;
@@ -44,5 +41,39 @@ public interface ConnectionDetails {
    */
   default Map<String, String> getProperties() {
     return Collections.emptyMap();
+  }
+
+  default Object openDialog( Bowl bowl, Object wTabFolder, Object propsUI ) {
+    return openDialog( wTabFolder, propsUI );
+  }
+
+  /** @deprecated Kept for backwards compatibility only. Use the version with the Bowl */
+  @Deprecated
+  default Object openDialog( Object wTabFolder, Object propsUI ) {
+    //noop if not defined
+    return null;
+  }
+
+  default void closeDialog() {
+    //noop if not defined
+  }
+
+  default void setDescription( String description ) {
+    //remove the default when done implementing
+  }
+
+  VariableSpace getSpace();
+
+  void setSpace( VariableSpace space );
+
+  /**
+   * Clones the connection details instance.
+   * <p>
+   * The default implementation delegates cloning to {@link ConnectionDetailsUtils#cloneMeta(ConnectionDetails)}.
+   *
+   * @return The cloned connection details.
+   */
+  default ConnectionDetails cloneDetails() throws MetaStoreException {
+    return ConnectionDetailsUtils.cloneMeta( this );
   }
 }

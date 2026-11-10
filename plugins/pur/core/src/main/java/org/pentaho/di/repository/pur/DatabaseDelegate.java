@@ -1,19 +1,16 @@
-/*!
- * Copyright 2010 - 2020 Hitachi Vantara.  All rights reserved.
+/*! ******************************************************************************
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Pentaho
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- */
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
 package org.pentaho.di.repository.pur;
 
 import org.pentaho.di.core.Const;
@@ -43,6 +40,7 @@ public class DatabaseDelegate extends AbstractDelegate implements ITransformer, 
 
   // ~ Static fields/initializers ======================================================================================
 
+  private static final String CONNECTION_ID = "CONNECTION_ID";
   private static final String PROP_INDEX_TBS = "INDEX_TBS";
   private static final String PROP_DATA_TBS = "DATA_TBS";
   private static final String PROP_SERVERNAME = "SERVERNAME";
@@ -98,6 +96,7 @@ public class DatabaseDelegate extends AbstractDelegate implements ITransformer, 
     rootNode.setProperty( PROP_SERVERNAME, databaseMeta.getServername() );
     rootNode.setProperty( PROP_DATA_TBS, databaseMeta.getDataTablespace() );
     rootNode.setProperty( PROP_INDEX_TBS, databaseMeta.getIndexTablespace() );
+    rootNode.setProperty( CONNECTION_ID, databaseMeta.getConnectionId() );
 
     rootNode.setProperty( PROP_CONNECT_SQL, setNull( databaseMeta.getConnectSQL() ) );
     rootNode.setProperty( PROP_INITIAL_POOL_SIZE, databaseMeta.getInitialPoolSize() );
@@ -163,6 +162,7 @@ public class DatabaseDelegate extends AbstractDelegate implements ITransformer, 
     databaseMeta.setServername( getString( rootNode, PROP_SERVERNAME ) );
     databaseMeta.setDataTablespace( getString( rootNode, PROP_DATA_TBS ) );
     databaseMeta.setIndexTablespace( getString( rootNode, PROP_INDEX_TBS ) );
+    databaseMeta.setConnectionId( getString( rootNode, CONNECTION_ID ) );
 
     databaseMeta.setConnectSQL( getString( rootNode, PROP_CONNECT_SQL ) );
     databaseMeta.setInitialPoolSize( getInt( rootNode, PROP_INITIAL_POOL_SIZE ) );

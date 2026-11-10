@@ -1,25 +1,17 @@
 //CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.core.gui;
 
@@ -61,6 +53,8 @@ import java.util.Hashtable;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
 /*
  * colors etc. are allocated once and released once at the end of the program.
@@ -77,6 +71,8 @@ public class GUIResource {
   private static GUIResource guiResource;
 
   private Display display;
+
+  private static boolean initialized = false;
 
   // 33 resources
 
@@ -153,13 +149,13 @@ public class GUIResource {
   private ManagedFont fontBold;
 
   /* * * Images * * */
-  private Map<String, SwtUniversalImage> imagesSteps = new ConcurrentHashMap<>();
+  private static Map<String, SwtUniversalImage> imagesSteps = new ConcurrentHashMap<>();
 
-  private Map<String, Image> imagesStepsSmall = new ConcurrentHashMap<>();
+  private static Map<String, Image> imagesStepsSmall = new ConcurrentHashMap<>();
 
-  private Map<String, SwtUniversalImage> imagesJobentries;
+  private static Map<String, SwtUniversalImage> imagesJobentries = new ConcurrentHashMap<String, SwtUniversalImage>();
 
-  private Map<String, Image> imagesJobentriesSmall;
+  private static Map<String, Image> imagesJobentriesSmall = new ConcurrentHashMap<String, Image>();
 
   private SwtUniversalImage imageHop;
 
@@ -205,13 +201,25 @@ public class GUIResource {
 
   private SwtUniversalImage imageSlaveTree;
 
+  private SwtUniversalImage imageVfs;
+
   private SwtUniversalImage imageArrow;
 
   private SwtUniversalImage imageFolder;
 
+  private SwtUniversalImage imageConfigurations;
+
+  private SwtUniversalImage imageMainConfigurations;
+
   private SwtUniversalImage imageTransRepo;
 
   private SwtUniversalImage imageJobRepo;
+
+  private SwtUniversalImage imageSharedNew;
+
+  private SwtUniversalImage imageSharedOverwrite;
+
+  private SwtUniversalImage imageSharedIdentical;
 
   private Image imageWizard;
 
@@ -422,11 +430,17 @@ public class GUIResource {
 
   private SwtUniversalImage imagePrintDisabled;
 
+  private Image flatHelpIcon;
+
   /**
    * GUIResource also contains the clipboard as it has to be allocated only once! I don't want to put it in a separate
    * singleton just for this one member.
    */
   private Clipboard clipboard;
+
+  private GUIResource() {
+    this( PropsUI.getDisplay() );
+  }
 
   private GUIResource( Display display ) {
     this.display = display;
@@ -470,10 +484,20 @@ public class GUIResource {
         // nothing needed here
       }
     } );
-
+    initialized = true;
   }
 
   public static GUIResource getInstance() {
+    if ( Const.isRunningOnWebspoonMode() ) {
+      try {
+        Class<?> singletonUtil = Class.forName( "org.eclipse.rap.rwt.SingletonUtil" );
+        Method getSessionInstance = singletonUtil.getDeclaredMethod( "getSessionInstance", Class.class );
+        return (GUIResource) getSessionInstance.invoke( null, GUIResource.class );
+      } catch ( ClassNotFoundException | NoSuchMethodException | InvocationTargetException | IllegalAccessException e ) {
+        e.printStackTrace();
+        return null;
+      }
+    }
     if ( guiResource != null ) {
       return guiResource;
     }
@@ -531,11 +555,16 @@ public class GUIResource {
     // Load all images from files...
     loadFonts();
     loadCommonImages();
-    loadStepImages();
-    loadJobEntryImages();
+    if ( !initialized || !Const.isRunningOnWebspoonMode() ) {
+      loadStepImages();
+      loadJobEntryImages();
+    }
   }
 
   private void dispose( boolean reload ) {
+
+    flatHelpIcon.dispose();
+
     // Colors
     colorBackground.dispose();
     colorGraph.dispose();
@@ -602,8 +631,13 @@ public class GUIResource {
       imageSlaveTree.dispose();
       imageArrow.dispose();
       imageFolder.dispose();
+      imageConfigurations.dispose();
+      imageMainConfigurations.dispose();
       imageTransRepo.dispose();
       imageJobRepo.dispose();
+      imageSharedNew.dispose();
+      imageSharedOverwrite.dispose();
+      imageSharedIdentical.dispose();
       imageWizard.dispose();
       imageCredits.dispose();
       imageStart.dispose();
@@ -717,11 +751,12 @@ public class GUIResource {
 
       disposeImage( imageShowErrorLines );
 
-      // big images
-      disposeUniversalImages( imagesSteps.values() );
-
-      // Small images
-      disposeImages( imagesStepsSmall.values() );
+      if ( !Const.isRunningOnWebspoonMode() ) {
+        // big images
+        disposeUniversalImages( imagesSteps.values() );
+        // Small images
+        disposeImages( imagesStepsSmall.values() );
+      }
 
       // Dispose of the images in the map
       disposeImages( imageMap.values() );
@@ -913,6 +948,9 @@ public class GUIResource {
     imageSlaveTree =
       SwtSvgImageUtil.getImageAsResource( display, BasePropertyHandler.getProperty( "Slave_tree_image" ) );
 
+    // "ui/images/VFS.svg"
+    imageVfs = SwtSvgImageUtil.getImageAsResource( display, BasePropertyHandler.getProperty( "Vfs_image" ) );
+
     // "ui/images/logo_kettle_lrg.png"
     imageKettleLogo = loadAsResource( display, BasePropertyHandler.getProperty( "Logo_lrg_image" ), 0 );
     // "ui/images/bg_banner.png"
@@ -946,7 +984,8 @@ public class GUIResource {
         .getProperty( "MIS_image" ) );
 
     // "ui/images/spoon.ico"
-    imageSpoon = loadAsResource( display, BasePropertyHandler.getProperty( "spoon_image" ), 0 );
+    int size = ( Const.isRunningOnWebspoonMode() ) ? 0 : 32;
+    imageSpoon = loadAsResource( display, BasePropertyHandler.getProperty( "spoon_image" ), size );
 
     // "ui/images/spoon_lowres.ico"
     imageSpoonLow = loadAsResource( display, BasePropertyHandler.getProperty( "spoon_image_low" ), 48 );
@@ -1261,6 +1300,14 @@ public class GUIResource {
     imageFolder = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
       BasePropertyHandler.getProperty( "Folder_image" ) );
 
+    // "ui/images/Configurations.png"
+    imageConfigurations = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
+      BasePropertyHandler.getProperty( "Configurations_image" ) );
+
+    // "ui/images/Main_Configurations.png"
+    imageMainConfigurations = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
+      BasePropertyHandler.getProperty( "Main_Configurations_image" ) );
+
     // "ui/images/transrepo.png"
     imageTransRepo = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
       BasePropertyHandler.getProperty( "TransRepo_image" ) );
@@ -1269,6 +1316,17 @@ public class GUIResource {
     imageJobRepo = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
       BasePropertyHandler.getProperty( "JobRepo_image" ) );
 
+    // "ui/images/shared_new.svg"
+    imageSharedNew = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
+      BasePropertyHandler.getProperty( "SharedNew_image" ) );
+
+    // "ui/images/overwrite.svg"
+    imageSharedOverwrite = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
+      BasePropertyHandler.getProperty( "SharedOverwrite_image" ) );
+
+    // "ui/images/identical.svg"
+    imageSharedIdentical = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(),
+      BasePropertyHandler.getProperty( "SharedIdentical_image" ) );
 
     // Makes transparent images "on the fly"
     //
@@ -1318,14 +1376,18 @@ public class GUIResource {
       SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(), BasePropertyHandler
         .getProperty( "candidateArrow_image" ) );
 
+    flatHelpIcon = SwtSvgImageUtil.getUniversalImage( display, getClass().getClassLoader(), "ui/images/help.svg" )
+      .getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
   }
 
   /**
    * Load all step images from files.
    */
   private void loadJobEntryImages() {
-    imagesJobentries = new Hashtable<>();
-    imagesJobentriesSmall = new Hashtable<>();
+    if ( !Const.isRunningOnWebspoonMode() ) {
+      imagesJobentries = new Hashtable<>();
+      imagesJobentriesSmall = new Hashtable<>();
+    }
 
     // //
     // // JOB ENTRY IMAGES TO LOAD
@@ -1574,6 +1636,13 @@ public class GUIResource {
    */
   public Image getImageSlaveTreeMedium() {
     return imageSlaveTree.getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
+  }
+
+  /**
+   * @return Returns the imageVfs.
+   */
+  public Image getImageVfsMedium() {
+    return imageVfs.getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
   }
 
   /**
@@ -1956,6 +2025,14 @@ public class GUIResource {
     return imageFolder.getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
   }
 
+  public Image getImageConfigurations() {
+    return imageConfigurations.getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
+  }
+
+  public Image getImageMainConfigurations() {
+    return imageMainConfigurations.getAsBitmapForSize( display, ConstUI.MEDIUM_ICON_SIZE, ConstUI.MEDIUM_ICON_SIZE );
+  }
+
   /**
    * @return the imageJobRepo
    */
@@ -1965,6 +2042,27 @@ public class GUIResource {
 
   public SwtUniversalImage getSwtImageJobRepo() {
     return imageJobRepo;
+  }
+
+  /**
+   * @return the imageSharedNew
+   */
+  public SwtUniversalImage getSwtImageSharedNew() {
+    return imageSharedNew;
+  }
+
+  /**
+   * @return the imageSharedOverwrite
+   */
+  public SwtUniversalImage getSwtImageSharedOverwrite() {
+    return imageSharedOverwrite;
+  }
+
+  /**
+   * @return the imageSharedIdentical
+   */
+  public SwtUniversalImage getSwtImageSharedIdentical() {
+    return imageSharedIdentical;
   }
 
   /**
@@ -2703,6 +2801,13 @@ public class GUIResource {
     return candidateArrow;
   }
 
+  /**
+   * The help icon used in flat buttons in newer dialogs such as File Open/Save.
+   * This image is shared and should not be disposed.
+   */
+  public Image getHelpIconFlat() {
+    return flatHelpIcon;
+  }
 
   /**
    * @return an Image containing the given text

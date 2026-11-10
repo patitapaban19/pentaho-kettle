@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.kitchen;
 
@@ -26,6 +18,8 @@ import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.base.AbstractBaseCommandExecutor;
 import org.pentaho.di.base.CommandExecutorCodes;
 import org.pentaho.di.base.Params;
+import org.pentaho.di.connections.ConnectionManager;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.exception.KettleException;
@@ -34,12 +28,15 @@ import org.pentaho.di.core.extension.KettleExtensionPoint;
 import org.pentaho.di.core.logging.LogChannel;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.core.parameters.UnknownParamException;
+import org.pentaho.di.core.Props;
 import org.pentaho.di.core.util.FileUtil;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.core.vfs.KettleVFS;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.job.Job;
 import org.pentaho.di.job.JobMeta;
+import org.pentaho.di.metastore.MetaStoreConst;
+import org.pentaho.di.pan.CommandExecutorResult;
 import org.pentaho.di.repository.RepositoriesMeta;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
@@ -89,10 +86,11 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     Repository repository = null;
 
     try {
-
       if ( getMetaStore() == null ) {
-        setMetaStore( createDefaultMetastore() );
+        setMetaStore( MetaStoreConst.getDefaultMetastore() );
       }
+
+      ConnectionManager.getInstance().setMetastoreSupplier( MetaStoreConst.getDefaultMetastoreSupplier() );
 
       // Read kettle job specified on command-line?
       if ( !Utils.isEmpty( params.getRepoName() ) || !Utils.isEmpty( params.getLocalFile() ) ) {
@@ -104,8 +102,10 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
           /**
            * if set, _trust_user_ needs to be considered. See pur-plugin's:
            *
-           * @link https://github.com/pentaho/pentaho-kettle/blob/8.0.0.0-R/plugins/pur/core/src/main/java/org/pentaho/di/repository/pur/PurRepositoryConnector.java#L97-L101
-           * @link https://github.com/pentaho/pentaho-kettle/blob/8.0.0.0-R/plugins/pur/core/src/main/java/org/pentaho/di/repository/pur/WebServiceManager.java#L130-L133
+           * @link https://github.com/pentaho/pentaho-kettle/blob/8.0.0
+           * .0-R/plugins/pur/core/src/main/java/org/pentaho/di/repository/pur/PurRepositoryConnector.java#L97-L101
+           * @link https://github.com/pentaho/pentaho-kettle/blob/8.0.0
+           * .0-R/plugins/pur/core/src/main/java/org/pentaho/di/repository/pur/WebServiceManager.java#L130-L133
            */
           if ( isEnabled( params.getTrustRepoUser() ) ) {
             System.setProperty( "pentaho.repository.client.attemptTrust", YES );
@@ -113,7 +113,9 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
 
           // In case we use a repository...
           // some commands are to load a Trans from the repo; others are merely to print some repo-related information
-          RepositoryMeta repositoryMeta = loadRepositoryConnection( params.getRepoName(), "Kitchen.Log.LoadingRep", "Kitchen.Error.NoRepDefinied", "Kitchen.Log.FindingRep" );
+          RepositoryMeta repositoryMeta =
+            loadRepositoryConnection( params.getRepoName(), "Kitchen.Log.LoadingRep", "Kitchen.Error.NoRepDefinied",
+              "Kitchen.Log.FindingRep" );
 
           if ( repositoryMeta == null ) {
             System.out.println( BaseMessages.getString( getPkgClazz(), "Kitchen.Error.CanNotConnectRep" ) );
@@ -121,28 +123,51 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
           }
 
           logDebug( "Kitchen.Log.CheckUserPass" );
-          repository = establishRepositoryConnection( repositoryMeta, params.getRepoUsername(), params.getRepoPassword(), RepositoryOperation.EXECUTE_JOB );
+          repository =
+            establishRepositoryConnection( repositoryMeta, params.getRepoUsername(), params.getRepoPassword(),
+              RepositoryOperation.EXECUTE_JOB );
 
-          // Is the command a request to output some repo-related information ( list directories, export repo content, ... ) ?
+          // Is the command a request to output some repo-related information ( list directories, export repo
+          // content, ... ) ?
           // If so, nothing else is needed ( other than executing the actual requested operation )
           if ( isEnabled( params.getListRepoFiles() ) || isEnabled( params.getListRepoDirs() ) ) {
-            executeRepositoryBasedCommand( repository, params.getInputDir(), params.getListRepoFiles(), params.getListRepoDirs() );
+            executeRepositoryBasedCommand( repository, params.getInputDir(), params.getListRepoFiles(),
+              params.getListRepoDirs() );
             return exitWithStatus( CommandExecutorCodes.Kitchen.SUCCESS.getCode() );
           }
 
+          // Validate PluginNamedParams
+          blockAndThrow( getKettleInit() );
+          CommandExecutorResult result = validateAndSetPluginContext( getLog(), params, repository );
+          if ( result != null && result.getCode() != 0 ) {
+            return exitWithStatus( result.getCode() );
+          }
+
           job = loadJobFromRepository( repository, params.getInputDir(), params.getInputFile() );
+        }
+
+        // Validate customNamedParams
+        if ( repository == null ) {
+          // We need the plugins to be loaded here
+          blockAndThrow( getKettleInit() );
+          CommandExecutorResult result = validateAndSetPluginContext( getLog(), params, null );
+          if ( result != null && result.getCode() != 0 ) {
+            return exitWithStatus( result.getCode() );
+          }
         }
 
         // Try to load if from file
         if ( job == null ) {
 
           // Try to load the job from file, even if it failed to load from the repository
-          job = loadJobFromFilesystem( params.getLocalInitialDir(), params.getLocalFile(), params.getBase64Zip() );
+          job = loadJobFromFilesystem( params.getLocalInitialDir(), params.getLocalFile(),
+            params.getBase64Zip() );
         }
 
       } else if ( isEnabled( params.getListRepos() ) ) {
 
-        printRepositories( loadRepositoryInfo( "Kitchen.Log.ListRep", "Kitchen.Error.NoRepDefinied" ) ); // list the repositories placed at repositories.xml
+        printRepositories( loadRepositoryInfo( "Kitchen.Log.ListRep",
+          "Kitchen.Error.NoRepDefinied" ) ); // list the repositories placed at repositories.xml
 
       }
     } catch ( KettleException e ) {
@@ -154,7 +179,8 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     }
 
     if ( job == null ) {
-      if ( !isEnabled( params.getListRepoFiles() ) && !isEnabled( params.getListRepoDirs() ) && !isEnabled( params.getListRepos() ) ) {
+      if ( !isEnabled( params.getListRepoFiles() ) && !isEnabled( params.getListRepoDirs() ) && !isEnabled(
+        params.getListRepos() ) ) {
         System.out.println( BaseMessages.getString( getPkgClazz(), "Kitchen.Error.canNotLoadJob" ) );
       }
 
@@ -162,10 +188,13 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     }
 
     if ( !Utils.isEmpty( params.getExportRepo() ) ) {
-
+      // For export specifically, initialize props to honor "only used db connections" setting
+      Props.init( Props.TYPE_PROPERTIES_SPOON );
       try {
         // Export the resources linked to the currently loaded file...
-        TopLevelResource topLevelResource = ResourceUtil.serializeResourceExportInterface( params.getExportRepo(), job.getJobMeta(), job, repository, getMetaStore() );
+        TopLevelResource topLevelResource =
+          ResourceUtil.serializeResourceExportInterface( getBowl(), repository == null ? DefaultBowl.getInstance()
+            : repository.getBowl(), params.getExportRepo(), job.getJobMeta(), job, repository, getMetaStore() );
         String launchFile = topLevelResource.getResourceName();
         String message = ResourceUtil.getExplanation( params.getExportRepo(), launchFile, job.getJobMeta() );
         System.out.println();
@@ -182,10 +211,9 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     Date start = Calendar.getInstance().getTime();
 
     try {
-
       // Set the command line arguments on the job ...
       job.setArguments( arguments );
-      job.initializeVariablesFrom( null );
+      job.initializeVariablesFrom( getBowl().getADefaultVariableSpace() );
       job.setLogLevel( getLog().getLogLevel() );
       job.getJobMeta().setInternalKettleVariables( job );
       job.setRepository( repository );
@@ -228,7 +256,8 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
         printJobParameters( job );
 
         // stop right here...
-        return exitWithStatus( CommandExecutorCodes.Kitchen.COULD_NOT_LOAD_JOB.getCode() ); // same as the other list options
+        return exitWithStatus(
+          CommandExecutorCodes.Kitchen.COULD_NOT_LOAD_JOB.getCode() ); // same as the other list options
       }
 
       job.start(); // Execute the selected job.
@@ -249,8 +278,9 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
 
     Date stop = Calendar.getInstance().getTime();
 
-    calculateAndPrintElapsedTime( start, stop, "Kitchen.Log.StartStop", "Kitchen.Log.ProcessEndAfter", "Kitchen.Log.ProcessEndAfterLong",
-            "Kitchen.Log.ProcessEndAfterLonger", "Kitchen.Log.ProcessEndAfterLongest" );
+    calculateAndPrintElapsedTime( start, stop, "Kitchen.Log.StartStop", "Kitchen.Log.ProcessEndAfter",
+      "Kitchen.Log.ProcessEndAfterLong",
+      "Kitchen.Log.ProcessEndAfterLonger", "Kitchen.Log.ProcessEndAfterLongest" );
     getResult().setElapsedTimeMillis( stop.getTime() - start.getTime() );
 
     return exitWithStatus( returnCode );
@@ -270,10 +300,12 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     return CommandExecutorCodes.Kitchen.KETTLE_VERSION_PRINT.getCode();
   }
 
-  protected void executeRepositoryBasedCommand( Repository repository, final String dirName, final String listJobs, final String listDirs ) throws Exception {
+  protected void executeRepositoryBasedCommand( Repository repository, final String dirName, final String listJobs,
+                                                final String listDirs ) throws Exception {
 
-    RepositoryDirectoryInterface directory = loadRepositoryDirectory( repository, dirName, "Kitchen.Error.NoRepProvided",
-            "Kitchen.Log.Alocate&ConnectRep", "Kitchen.Error.CanNotFindSuppliedDirectory" );
+    RepositoryDirectoryInterface directory =
+      loadRepositoryDirectory( repository, dirName, "Kitchen.Error.NoRepProvided",
+        "Kitchen.Log.Alocate&ConnectRep", "Kitchen.Error.CanNotFindSuppliedDirectory" );
 
     if ( directory == null ) {
       return; // not much we can do here
@@ -294,28 +326,25 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
       return null;
     }
 
-    RepositoryDirectoryInterface directory = loadRepositoryDirectory( repository, dirName, "Kitchen.Error.NoRepProvided",
-            "Kitchen.Log.Alocate&ConnectRep", "Kitchen.Error.CanNotFindSuppliedDirectory" );
+    RepositoryDirectoryInterface directory =
+      loadRepositoryDirectory( repository, dirName, "Kitchen.Error.NoRepProvided",
+        "Kitchen.Log.Alocate&ConnectRep", "Kitchen.Error.CanNotFindSuppliedDirectory" );
 
     if ( directory == null ) {
       return null; // not much we can do here
     }
 
-    // Add the IMetaStore of the repository to our delegation
-    if ( repository.getMetaStore() != null && getMetaStore() != null ) {
-      getMetaStore().addMetaStore( repository.getMetaStore() );
-    }
-
     // Load a job
-    logDebug(  "Kitchen.Log.LoadingJobInfo" );
+    logDebug( "Kitchen.Log.LoadingJobInfo" );
     blockAndThrow( getKettleInit() );
     JobMeta jobMeta = repository.loadJob( jobName, directory, null, null ); // reads last version
-    logDebug(  "Kitchen.Log.AllocateJob" );
+    logDebug( "Kitchen.Log.AllocateJob" );
 
     return new Job( repository, jobMeta );
   }
 
-  public Job loadJobFromFilesystem( String initialDir, String filename, Serializable base64Zip ) throws Exception {
+  public Job loadJobFromFilesystem( String initialDir, String filename, Serializable base64Zip )
+      throws Exception {
 
     if ( Utils.isEmpty( filename ) ) {
       System.out.println( BaseMessages.getString( getPkgClazz(), "Kitchen.Error.canNotLoadJob" ) );
@@ -336,7 +365,7 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
       fileName = initialDir + fileName;
     }
 
-    JobMeta jobMeta = new JobMeta( fileName, null, null );
+    JobMeta jobMeta = new JobMeta( getBowl(), fileName, null, null );
     return new Job( null, jobMeta );
   }
 
@@ -345,18 +374,20 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
     if ( job != null && job.listParameters() != null ) {
 
       for ( String pName : job.listParameters() ) {
-        printParameter( pName, job.getParameterValue( pName ), job.getParameterDefault( pName ), job.getParameterDescription( pName ) );
+        printParameter( pName, job.getParameterValue( pName ), job.getParameterDefault( pName ),
+          job.getParameterDescription( pName ) );
       }
     }
   }
 
-  protected void printRepositoryStoredJobs( Repository repository, RepositoryDirectoryInterface directory ) throws KettleException {
+  protected void printRepositoryStoredJobs( Repository repository, RepositoryDirectoryInterface directory )
+    throws KettleException {
 
     logDebug( "Kitchen.Log.GettingLostJobsInDirectory", "" + directory );
 
     String[] jobnames = repository.getJobNames( directory.getObjectId(), false );
     for ( int i = 0; i < jobnames.length; i++ ) {
-      System.out.println( jobnames[i] );
+      System.out.println( jobnames[ i ] );
     }
   }
 
@@ -368,7 +399,8 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
 
       for ( int i = 0; i < repositoriesMeta.nrRepositories(); i++ ) {
         RepositoryMeta rinfo = repositoriesMeta.getRepository( i );
-        System.out.println( "#" + ( i + 1 ) + " : " + rinfo.getName() + " [" + rinfo.getDescription() + "]  id=" + rinfo.getId() );
+        System.out.println(
+          "#" + ( i + 1 ) + " : " + rinfo.getName() + " [" + rinfo.getDescription() + "]  id=" + rinfo.getId() );
       }
     }
   }
@@ -384,7 +416,7 @@ public class KitchenCommandExecutor extends AbstractBaseCommandExecutor {
       if ( e != null ) {
         throw e;
       }
-    } catch ( InterruptedException | ExecutionException e  ) {
+    } catch ( InterruptedException | ExecutionException e ) {
       throw new RuntimeException( e );
     }
   }

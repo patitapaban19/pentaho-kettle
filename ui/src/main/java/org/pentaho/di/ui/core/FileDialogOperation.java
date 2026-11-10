@@ -1,41 +1,89 @@
-/*
- * Copyright 2017-2019 Hitachi Vantara. All rights reserved.
+/*! ******************************************************************************
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * Pentaho
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- */
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
+ *
+ * Change Date: 2030-06-15
+ ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.core;
 
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryObjectInterface;
+
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * Created by bmorrise on 8/17/17.
  */
 public class FileDialogOperation {
 
+
+  /** Will be called whenever files are loaded by this dialog */
+  public interface FileLoadListener {
+    void onFileLoaded( FileLookupInfo file );
+    /** forget about anything to do with file or its children */
+    void reset( FileLookupInfo file );
+  }
+
+  /** File information and lookup */
+  public interface FileLookupInfo {
+    /** The full path of the file */
+    String getPath();
+    String getName();
+
+    boolean isFolder();
+
+    /** Lookup children for a folder */
+    boolean hasChildFile( String folderPath );
+  }
+
+  /** A provider for additional images, to be applied based on path */
+  public interface CustomImageProvider {
+    /** identifier -> custom image */
+    Map<String, CustomImage> getCustomImages();
+
+    /** @return identifier of custom image to use for that file */
+    Optional<String> getImage( String path );
+  }
+
+  /** An image location. If a classloader is supplied, paths will be resolved within it. */
+  public interface CustomImage {
+    String getPath();
+    Optional<ClassLoader> getClassLoader();
+  }
+
   public static final String SELECT_FOLDER = "selectFolder";
   public static final String SELECT_FILE = "selectFile";
   public static final String SELECT_FILE_FOLDER = "selectFileFolder";
   public static final String OPEN = "open";
   public static final String SAVE = "save";
+  public static final String SAVE_AS = "saveAs";
   public static final String SAVE_TO = "saveTo";
   public static final String SAVE_TO_FILE_FOLDER = "saveToFileFolder";
+
+  public static final String EXPORT = "export";
+
+  public static final String EXPORT_ALL = "exportAll";
+
+  public static final String IMPORT = "import";
   public static final String ORIGIN_SPOON = "spoon";
   public static final String ORIGIN_OTHER = "other";
   public static final String TRANSFORMATION = "transformation";
   public static final String JOB = "job";
   public static final String PROVIDER_REPO = "repository";
 
+  private Bowl bowl;
   private Repository repository;
   private String command;
   private String filter;
@@ -53,13 +101,41 @@ public class FileDialogOperation {
   private String connectionTypeFilter;
   private boolean useSchemaPath;
 
+  private boolean showOnlyFolders = false;
+  private Predicate<String> openCondition = any -> true;
+
+  /**
+   * Constructs an operation that will not use Bowl VFS Connections.
+   */
   public FileDialogOperation( String command ) {
-    this.command = command;
+    this( DefaultBowl.getInstance(), command );
   }
 
+  /**
+   * Constructs an operation that will include Bowl VFS Connections.
+   */
+  public FileDialogOperation( Bowl bowl, String command ) {
+    this( bowl, command, null );
+  }
+
+  /**
+   * Constructs an operation that will not use Bowl VFS Connections.
+   */
   public FileDialogOperation( String command, String origin ) {
+    this( DefaultBowl.getInstance(), command, origin );
+  }
+
+  /**
+   * Constructs an operation that will include Bowl VFS Connections.
+   */
+  public FileDialogOperation( Bowl bowl, String command, String origin ) {
+    this.bowl = bowl;
     this.command = command;
     this.origin = origin;
+  }
+
+  public Bowl getBowl() {
+    return bowl;
   }
 
   public String getCommand() {
@@ -150,10 +226,22 @@ public class FileDialogOperation {
     this.path = path;
   }
 
+  /**
+   * Separate VFS connection name variable is no longer needed.
+   * @deprecated
+   * The connection name is in the URI since full {@value org.pentaho.di.connections.vfs.provider.ConnectionFileProvider#SCHEME } paths are being used.
+   */
+  @Deprecated
   public String getConnection() {
     return connection;
   }
 
+  /**
+   * Separate VFS connection name variable is no longer needed.
+   * @deprecated
+   * The connection name is in the URI since full {@value org.pentaho.di.connections.vfs.provider.ConnectionFileProvider#SCHEME } paths are being used.
+   */
+  @Deprecated
   public void setConnection( String connection ) {
     this.connection = connection;
   }
@@ -196,7 +284,25 @@ public class FileDialogOperation {
 
   public boolean isSaveCommand() {
     return ( command.equalsIgnoreCase( SAVE ) || command.equalsIgnoreCase( SAVE_TO )
-      || command.equalsIgnoreCase( SAVE_TO_FILE_FOLDER ) );
+      || command.equalsIgnoreCase( SAVE_AS ) || command.equalsIgnoreCase( SAVE_TO_FILE_FOLDER )
+            || command.equalsIgnoreCase( EXPORT) || command.equalsIgnoreCase( EXPORT_ALL) );
   }
 
+  public boolean isShowOnlyFolders() {
+    return showOnlyFolders;
+  }
+
+  /** Omit any files and show only folders in the dialog */
+  public void setShowOnlyFolders( boolean value ) {
+    showOnlyFolders = value;
+  }
+
+  public Predicate<String> getOpenCondition() {
+    return openCondition;
+  }
+
+  /** Additional condition for opening a file, based on its path */
+  public void setOpenCondition( Predicate<String> value ) {
+    openCondition = value;
+  }
 }

@@ -1,27 +1,20 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.tableinput;
 
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.CheckResult;
 import org.pentaho.di.core.CheckResultInterface;
 import org.pentaho.di.core.Const;
@@ -46,17 +39,10 @@ import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.Repository;
-import org.pentaho.di.shared.SharedObjectInterface;
 import org.pentaho.di.trans.DatabaseImpact;
 import org.pentaho.di.trans.Trans;
 import org.pentaho.di.trans.TransMeta;
-import org.pentaho.di.trans.step.BaseStepMeta;
-import org.pentaho.di.trans.step.StepDataInterface;
-import org.pentaho.di.trans.step.StepIOMeta;
-import org.pentaho.di.trans.step.StepIOMetaInterface;
-import org.pentaho.di.trans.step.StepInterface;
-import org.pentaho.di.trans.step.StepMeta;
-import org.pentaho.di.trans.step.StepMetaInterface;
+import org.pentaho.di.trans.step.*;
 import org.pentaho.di.trans.step.errorhandling.Stream;
 import org.pentaho.di.trans.step.errorhandling.StreamIcon;
 import org.pentaho.di.trans.step.errorhandling.StreamInterface;
@@ -74,10 +60,10 @@ import java.util.List;
  *
  */
 @InjectionSupported( localizationPrefix = "TableInputMeta.Injection." )
-public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
+public class TableInputMeta extends BaseDatabaseStepMeta implements StepMetaInterface {
   private static Class<?> PKG = TableInputMeta.class; // for i18n purposes, needed by Translator2!!
 
-  private List<? extends SharedObjectInterface> databases;
+  private List<DatabaseMeta> databases;
 
   private DatabaseMeta databaseMeta;
 
@@ -129,6 +115,7 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
   /**
    * @return Returns the database.
    */
+  @Override
   public DatabaseMeta getDatabaseMeta() {
     return databaseMeta;
   }
@@ -180,7 +167,7 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
     return retval;
   }
 
-  private void readData( Node stepnode, List<? extends SharedObjectInterface> databases ) throws KettleXMLException {
+  private void readData( Node stepnode, List<DatabaseMeta> databases ) throws KettleXMLException {
     this.databases = databases;
     try {
       databaseMeta = DatabaseMeta.findDatabase( databases, XMLHandler.getTagValue( stepnode, "connection" ) );
@@ -213,7 +200,8 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
     return new Database( loggingObject, databaseMeta );
   }
 
-  public void getFields( RowMetaInterface row, String origin, RowMetaInterface[] info, StepMeta nextStep,
+  @Override
+  public void getFields( Bowl bowl, RowMetaInterface row, String origin, RowMetaInterface[] info, StepMeta nextStep,
     VariableSpace space, Repository repository, IMetaStore metaStore ) throws KettleStepException {
     if ( databaseMeta == null ) {
       return; // TODO: throw an exception here
@@ -274,7 +262,7 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
       } catch ( KettleException ke ) {
         throw new KettleStepException( "Unable to get queryfields for SQL: " + Const.CR + sNewSQL, ke );
       } finally {
-        db.disconnect();
+        db.close();
       }
     }
     if ( isLazyConversionActive() ) {
@@ -437,7 +425,7 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
             CheckResultInterface.TYPE_RESULT_ERROR, "An error occurred: " + e.getMessage(), stepMeta );
         remarks.add( cr );
       } finally {
-        db.disconnect();
+        db.close();
       }
     } else {
       cr =
@@ -550,7 +538,8 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
     // Find the lookupfields...
     RowMetaInterface out = new RowMeta();
     // TODO: this builds, but does it work in all cases.
-    getFields( out, stepMeta.getName(), new RowMetaInterface[] { info }, null, transMeta, repository, metaStore );
+    getFields( transMeta.getBowl(), out, stepMeta.getName(), new RowMetaInterface[] { info }, null, transMeta,
+      repository, metaStore );
 
     if ( out != null ) {
       for ( int i = 0; i < out.size(); i++ ) {
@@ -673,5 +662,10 @@ public class TableInputMeta extends BaseStepMeta implements StepMetaInterface {
    */
   public StepMeta getLookupFromStep() {
     return getStepIOMeta().getInfoStreams().get( 0 ).getStepMeta();
+  }
+
+  @Override
+  public StepHelperInterface getStepHelperInterface() {
+    return new TableInputHelper();
   }
 }

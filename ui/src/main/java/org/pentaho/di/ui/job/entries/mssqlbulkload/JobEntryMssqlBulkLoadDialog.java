@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.job.entries.mssqlbulkload;
 
@@ -458,7 +450,7 @@ public class JobEntryMssqlBulkLoadDialog extends JobEntryDialog implements JobEn
     } );
 
     wbFilename.addSelectionListener( new SelectionAdapterFileDialogTextVar( log, wFilename, jobMeta,
-      new SelectionAdapterOptions( SelectionOperation.FILE,
+      new SelectionAdapterOptions( jobMeta.getBowl(), SelectionOperation.FILE,
         new FilterType[] { FilterType.TXT, FilterType.CSV, FilterType.DAT, FilterType.ALL }, FilterType.TXT,
         new ProviderFilterType[] { ProviderFilterType.LOCAL } ) ) );
 
@@ -654,7 +646,7 @@ public class JobEntryMssqlBulkLoadDialog extends JobEntryDialog implements JobEn
     } );
 
     wbFormatFilename.addSelectionListener( new SelectionAdapterFileDialogTextVar( log, wFormatFilename, jobMeta,
-      new SelectionAdapterOptions( SelectionOperation.FILE,
+      new SelectionAdapterOptions( jobMeta.getBowl(), SelectionOperation.FILE,
         new FilterType[] { FilterType.TXT, FilterType.CSV, FilterType.ALL }, FilterType.TXT,
         new ProviderFilterType[] { ProviderFilterType.LOCAL } ) ) );
 
@@ -903,7 +895,7 @@ public class JobEntryMssqlBulkLoadDialog extends JobEntryDialog implements JobEn
     } );
 
     wbErrorFilename.addSelectionListener( new SelectionAdapterFileDialogTextVar( log, wErrorFilename, jobMeta,
-      new SelectionAdapterOptions( SelectionOperation.SAVE_TO,
+      new SelectionAdapterOptions( jobMeta.getBowl(), SelectionOperation.SAVE_TO,
         new FilterType[] { FilterType.TXT, FilterType.CSV, FilterType.ALL }, FilterType.TXT,
         new ProviderFilterType[] { ProviderFilterType.LOCAL } ) ) );
 
@@ -1330,7 +1322,7 @@ public class JobEntryMssqlBulkLoadDialog extends JobEntryDialog implements JobEn
           new ErrorDialog( shell, BaseMessages.getString( PKG, "System.Dialog.Error.Title" ), BaseMessages
             .getString( PKG, "JobMssqlBulkLoad.ConnectionError2.DialogMessage" ), e );
         } finally {
-          database.disconnect();
+          database.close();
         }
       }
     }

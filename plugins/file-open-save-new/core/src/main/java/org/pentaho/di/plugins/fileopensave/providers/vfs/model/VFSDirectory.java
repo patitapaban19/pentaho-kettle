@@ -1,31 +1,25 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.plugins.fileopensave.providers.vfs.model;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.vfs2.FileObject;
-import org.apache.commons.vfs2.FileSystemException;
 import org.pentaho.di.plugins.fileopensave.api.providers.Directory;
+import org.pentaho.di.plugins.fileopensave.api.providers.EntityType;
 import org.pentaho.di.plugins.fileopensave.providers.vfs.VFSFileProvider;
+import org.pentaho.di.plugins.fileopensave.util.Util;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -79,9 +73,29 @@ public class VFSDirectory extends VFSFile implements Directory {
     this.canAddChildren = canAddChildren;
   }
 
+  /**
+   * Create a VFSDirectory.  Note that this creates an VFSDirectory object, it does not physically create the
+   * directory.
+   * <p/>
+   * NOTE: logic for {@link #setRoot(String)} and {@link #setConnection(String)} is only used in
+   * {@link org.pentaho.di.plugins.fileopensave.dragdrop.ElementDragListener#dragSetData(org.eclipse.swt.dnd.DragSourceEvent)} for the
+   * scenario of "Recent Repository File".
+   *
+   * @param parent The path to the parent folder
+   * @param fileObject A VFSFileObject for the actual folder being created
+   * @param connection The VFS connection associated with the directory
+   * @param domain The domain associated with the directory
+   * @return VFSDirectory
+   */
   public static VFSDirectory create( String parent, FileObject fileObject, String connection, String domain ) {
     VFSDirectory vfsDirectory = new VFSDirectory();
-    vfsDirectory.setName( fileObject.getName().getBaseName() );
+    if ( fileObject.getName().toString().endsWith("/") ) {
+      // Adls2 has a bug that delivers directories with an ending slash.  Others do not
+      String adjustedName = fileObject.getName().toString();
+      vfsDirectory.setName( Util.getName( adjustedName.substring( 0, adjustedName.length() - 1 ) ) ); //remove the trailing slash
+    } else {
+      vfsDirectory.setName( fileObject.getName().getBaseName() );
+    }
     vfsDirectory.setPath( fileObject.getName().getURI() );
     vfsDirectory.setParent( parent );
     if ( connection != null ) {
@@ -94,7 +108,7 @@ public class VFSDirectory extends VFSFile implements Directory {
     vfsDirectory.setCanAddChildren( true );
     try {
       vfsDirectory.setDate( new Date( fileObject.getContent().getLastModifiedTime() ) );
-    } catch ( FileSystemException e ) {
+    } catch ( Exception e ) {
       vfsDirectory.setDate( new Date() );
     }
     return vfsDirectory;
@@ -111,14 +125,19 @@ public class VFSDirectory extends VFSFile implements Directory {
       return true;
     }
 
-    if ( !( obj instanceof VFSFile ) ) {
+    if ( !( obj instanceof VFSDirectory ) ) {
       return false;
     }
 
     VFSDirectory compare = (VFSDirectory) obj;
+    // This comparison depends on `getProvider()` to always return a hardcoded value
     return compare.getProvider().equals( getProvider() )
-      && ( ( compare.getConnection() == null && getConnection() == null ) || compare.getConnection()
-      .equals( getConnection() ) )
-      && ( ( compare.getPath() == null && getPath() == null ) || compare.getPath().equals( getPath() ) );
+      && StringUtils.equals( compare.getConnection(), getConnection() )
+      && StringUtils.equals( compare.getPath(), getPath() );
+  }
+
+  @Override
+  public EntityType getEntityType(){
+    return EntityType.VFS_DIRECTORY;
   }
 }

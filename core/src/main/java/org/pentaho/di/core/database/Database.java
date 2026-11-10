@@ -1,25 +1,16 @@
 // CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
 
 package org.pentaho.di.core.database;
 
@@ -28,6 +19,8 @@ import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.sql.BatchUpdateException;
 import java.sql.Blob;
 import java.sql.CallableStatement;
@@ -43,6 +36,7 @@ import java.sql.SQLException;
 import java.sql.Savepoint;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -53,9 +47,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.pentaho.di.core.util.EnvUtil;
 import org.apache.commons.vfs2.FileObject;
+import org.pentaho.di.core.bowl.Bowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.plugins.PluginTypeListener;
 import org.pentaho.di.core.row.value.ValueMetaPluginType;
@@ -115,6 +112,9 @@ import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.ObjectRevision;
 import org.pentaho.di.repository.RepositoryDirectory;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import javax.sql.DataSource;
+
 /**
  * Database handles the process of connecting to, reading from, writing to and updating databases. The database specific
  * parameters are defined in DatabaseInfo.
@@ -132,6 +132,57 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   private static final Map<String, Set<String>> registeredDrivers = new HashMap<>();
 
   private DatabaseMeta databaseMeta;
+
+  /**
+   * Classloader used when dynamic JDBC driver loading is configured on the {@link DatabaseMeta}
+   * via its attributes (for example, a {@code dynamicDriverId} resolved through service
+   * metadata and {@code JdbcDriverResolver}), rather than via connection properties such as
+   * {@code dynamicDriverJar} / {@code dynamicDriverClass}.
+   * Each Database instance owns its own loader — one per connection in the KTR.
+   * Closed in {@link #disconnect()} after the SQL connection is released.
+   *
+   * <p><b>Why {@code AtomicReference}:</b> In a multi-step transformation, one thread may be
+   * inside {@link #connectUsingClass} loading the driver JAR while a separate thread (e.g. the
+   * transformation engine responding to a user-initiated "Stop") concurrently calls
+   * {@link #disconnect()}, which closes and nullifies this loader. {@code volatile} alone is not
+   * sufficient because the check-then-close sequence ({@code if (x != null) x.close()}) is a
+   * compound operation that is not atomic. {@link java.util.concurrent.atomic.AtomicReference}
+   * allows {@link #closeDynamicClassLoader()} to atomically retrieve-and-clear the reference via
+   * {@code getAndSet(null)}, so at most one thread will ever call {@code close()}.
+   *
+   * <p><b>Real-time use-case:</b> A Kettle transformation has two "Table Input" steps that
+   * each open their own connection with a dynamic JDBC JAR (e.g. a custom Snowflake driver).
+   * When the user cancels the job, the engine calls {@code disconnect()} on every step in
+   * parallel. The {@code getAndSet(null)} guarantee ensures that once Thread-A claims this field
+   * in {@link #closeDynamicClassLoader()}, Thread-B receives {@code null} from its own
+   * {@code getAndSet(null)} and skips the close attempt — preventing a double-close
+   * {@link java.io.IOException}.
+   */
+  private final AtomicReference<ChildFirstURLClassLoader> dynamicDriverClassLoader = new AtomicReference<>();
+
+  /**
+   * Driver instance loaded via {@link #dynamicDriverClassLoader}.
+   * Used to call {@code driver.connect()} directly, bypassing {@link java.sql.DriverManager},
+   * so that two steps using different versions of the same driver (e.g. MySQL 5 and MySQL 8)
+   * never interfere with each other through the shared DriverManager registry.
+   *
+   * <p><b>Why {@code AtomicReference}:</b> {@link #openConnectionViaDynamicDriver} reads this
+   * field on the step-execution thread to obtain the {@link java.sql.Driver} reference, while
+   * {@link #closeDynamicClassLoader()} may be called concurrently from a disconnect/cancel
+   * thread and sets the field to {@code null}. {@code volatile} alone does not make the
+   * null-check-then-use pattern atomic. {@link java.util.concurrent.atomic.AtomicReference}
+   * provides the necessary memory-visibility guarantee for simple reads ({@code get()}) and
+   * makes writes ({@code set(null)}) atomically observable, so the executing thread
+   * consistently sees either a valid driver or {@code null} — never a partially published state.
+   *
+   * <p><b>Real-time use-case:</b> A streaming transformation processes records from two
+   * distinct MySQL versions (5.7 and 8.0) in parallel steps. Each step has its own
+   * {@code Database} instance with a distinct dynamic driver. If the job times out and the
+   * engine calls {@code disconnect()} from the scheduler thread, {@code AtomicReference}
+   * ensures the executing step thread immediately observes the null driver via {@code get()}
+   * and stops attempting to re-use the closed driver instance.
+   */
+  private final AtomicReference<Driver> dynamicDriver = new AtomicReference<>();
 
   private static final String DATA_SERVICES_PLUGIN_ID = "KettleThin";
 
@@ -181,6 +232,9 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   private int nrExecutedCommits;
 
   private static List<ValueMetaInterface> valueMetaPluginClasses;
+
+  private DataSource dataSource;
+  private String ownerName;
 
   static {
     initValueMetaPluginClasses();
@@ -342,6 +396,16 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   }
 
   /**
+   * @return Returns the dataSource.
+   */
+  public DataSource getDataSource( String partitionId ) throws KettleDatabaseException {
+    if ( dataSource == null ) {
+      initializeConnectionDataSource( partitionId );
+    }
+    return dataSource;
+  }
+
+  /**
    * Open the database connection.
    *
    * @throws KettleDatabaseException if something went wrong.
@@ -362,7 +426,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
   public synchronized void connect( String group, String partitionId ) throws KettleDatabaseException {
     try {
-
       log.snap( Metrics.METRIC_DATABASE_CONNECT_START, databaseMeta.getName() );
 
       // Before anything else, let's see if we already have a connection defined
@@ -394,10 +457,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       } catch ( KettleException e ) {
         throw new KettleDatabaseException( e );
       }
-
     } finally {
       log.snap( Metrics.METRIC_DATABASE_CONNECT_STOP, databaseMeta.getName() );
-
     }
   }
 
@@ -438,48 +499,22 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     }
 
     try {
-      DataSourceProviderInterface dsp = DataSourceProviderFactory.getDataSourceProviderInterface();
-      if ( dsp == null ) {
-        // since DataSourceProviderFactory is initialised with new DatabaseUtil(),
-        // this assignment is correct
-        dsp = new DatabaseUtil();
-      }
-
       if ( databaseMeta.getAccessType() == DatabaseMeta.TYPE_ACCESS_JNDI ) {
-        String jndiName = environmentSubstitute( databaseMeta.getDatabaseName() );
-        try {
-          this.connection = dsp.getNamedDataSource( jndiName, DatasourceType.JNDI ).getConnection();
-        } catch ( DataSourceNamingException e ) {
-          log.logError( "Unable to find datasource by JNDI name: " + jndiName, e );
-          throw e;
+        log.logDetailed( "Acquiring JNDI connection for database [" + databaseMeta.getName() + "]..." );
+        long startJndi = System.currentTimeMillis();
+        this.connection = getDataSource( partitionId ).getConnection();
+        log.logDetailed( "JNDI connection acquired for database [" + databaseMeta.getName() + "] in " + ( System.currentTimeMillis() - startJndi ) + " ms" );
+      } else if ( databaseMeta.isUsingConnectionPool() ) {
+        log.logDetailed( "Acquiring pooled connection for database [" + databaseMeta.getName() + "]..." );
+        long startPool = System.currentTimeMillis();
+        this.connection = getDataSource( partitionId ).getConnection();
+        log.logDetailed( "Pooled connection acquired for database [" + databaseMeta.getName() + "] in " + ( System.currentTimeMillis() - startPool ) + " ms" );
+        if ( getConnection().getAutoCommit() != isAutoCommit() ) {
+          setAutoCommit( isAutoCommit() );
         }
       } else {
-        if ( databaseMeta.isUsingConnectionPool() ) {
-          String name = databaseMeta.getName();
-          if ( databaseMeta.isNeedUpdate() ) {
-            dsp.invalidateNamedDataSource( name, DatasourceType.POOLED );
-            databaseMeta.setNeedUpdate( false );
-          }
-          try {
-            try {
-              this.connection = dsp.getNamedDataSource( name, DatasourceType.POOLED ).getConnection();
-            } catch ( UnsupportedOperationException | NullPointerException e ) {
-              // UnsupportedOperationException is happen at DatabaseUtil doesn't support pooled DS, use legacy routine
-              // NullPointerException is happen when we will try to run the transformation on the remote server but
-              // server does not have such databases, so will using legacy routine as well
-              this.connection = ConnectionPoolUtil.getConnection( log, databaseMeta, partitionId );
-            }
-            if ( getConnection().getAutoCommit() != isAutoCommit() ) {
-              setAutoCommit( isAutoCommit() );
-            }
-          } catch ( DataSourceNamingException e ) {
-            log.logError( "Unable to find pooled datasource by its name: " + name, e );
-            throw e;
-          }
-        } else {
-          // using non-jndi and non-pooled connection -- just a simple JDBC
-          connectUsingClass( databaseMeta.getDriverClass(), partitionId );
-        }
+        // using non-jndi and non-pooled connection -- just a simple JDBC
+        connectUsingClass( databaseMeta.getDriverClass(), partitionId );
       }
 
       // See if we need to execute extra SQL statement...
@@ -498,10 +533,57 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     }
   }
 
+  public void initializeConnectionDataSource( String partitionId ) throws KettleDatabaseException {
+
+    try {
+      DataSourceProviderInterface dsp = DataSourceProviderFactory.getDataSourceProviderInterface();
+      if ( dsp == null ) {
+        // since DataSourceProviderFactory is initialised with new DatabaseUtil(),
+        // this assignment is correct
+        dsp = new DatabaseUtil();
+      }
+
+      if ( databaseMeta.getAccessType() == DatabaseMeta.TYPE_ACCESS_JNDI ) {
+        this.dataSource = getJNDIDataSource( dsp );
+      } else if ( databaseMeta.isUsingConnectionPool() ) {
+        this.dataSource = getPoolingDataSource( partitionId, dsp );
+      }
+    } catch ( Exception e ) {
+      throw new KettleDatabaseException( "Error occurred while trying to retrieve the DataSource", e );
+    }
+  }
+
+  private DataSource getPoolingDataSource( String partitionId, DataSourceProviderInterface dsp ) throws Exception {
+
+    try {
+      return dsp.getPooledDataSourceFromMeta( databaseMeta, DatasourceType.POOLED );
+    } catch ( UnsupportedOperationException e ) {
+      // UnsupportedOperationException is happen at DatabaseUtil doesn't support pooled DS, use legacy routine
+      // NullPointerException is happen when we will try to run the transformation on the remote server but
+      // server does not have such databases, so will using legacy routine as well
+      if ( databaseMeta.isNeedUpdate() && !ConnectionPoolUtil.hasOldConfig( databaseMeta, partitionId ) ) {
+        dsp.invalidateNamedDataSource( ConnectionPoolUtil.getDataSourceName( databaseMeta, partitionId ),
+          DatasourceType.POOLED );
+        databaseMeta.setNeedUpdate( false );
+      }
+      return ConnectionPoolUtil.getDataSource( log, databaseMeta, partitionId );
+    }
+  }
+
+  private DataSource getJNDIDataSource( DataSourceProviderInterface dsp ) throws DataSourceNamingException {
+    String jndiName = environmentSubstitute( databaseMeta.getDatabaseName() );
+    try {
+      return dsp.getNamedDataSource( jndiName, DatasourceType.JNDI );
+    } catch ( DataSourceNamingException e ) {
+      log.logError( "Unable to find datasource by JNDI name: " + jndiName, e );
+      throw e;
+    }
+  }
+
   /**
    * Connect using the correct classname
    *
-   * @param classname for example "org.gjt.mm.mysql.Driver"
+   * @param classname for example "com.mysql.jdbc.Driver"
    * @return true if the connect was successful, false if something went wrong.
    */
   private void connectUsingClass( String classname, String partitionId ) throws KettleDatabaseException {
@@ -509,25 +591,60 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     PluginInterface plugin =
       PluginRegistry.getInstance().getPlugin( DatabasePluginType.class, databaseMeta.getDatabaseInterface() );
 
+    Properties properties = databaseMeta.getConnectionProperties();
+    Properties attributes = databaseMeta.getAttributes();
+    String driverId = attributes.getProperty( DatabaseMeta.ATTRIBUTE_DYNAMIC_DRIVER_ID );
+    String driverExtraJars = attributes.getProperty( DatabaseMeta.ATTRIBUTE_DYNAMIC_DRIVER_EXTRA_JAR_IDS );
+
+    boolean usingDynamicDriver = StringUtils.isNotBlank( driverId ) && Const.isFusionConnectionManagementEnabled();
+
+    // Resolved once here; reused when opening the connection below to avoid a second HTTP call.
+    String jdbcDriverClass = null;
+    if ( usingDynamicDriver ) {
+      // connect() is public synchronized, and shareConnectionWith() is private synchronized,
+      // so every code path that reaches here already holds the monitor on 'this'.
+      // No additional synchronization is needed.
+      var driverMetadata = getMetadataFromDriver( driverId );
+      jdbcDriverClass = driverMetadata.get( "driverClassName" ).toString();
+      List<String> listDriverExtraJars = StringUtils.isNotBlank( driverExtraJars )
+        ? Arrays.asList( driverExtraJars.split( "," ) )
+        : new ArrayList<>();
+      loadDynamicDriver( driverId, jdbcDriverClass, listDriverExtraJars );
+    } else {
+      loadStaticDriver( classname, plugin );
+    }
+
+    try {
+      String url = resolveUrl( partitionId );
+      String[] credentials = resolveCredentials( partitionId );
+      url = applyCredentialsToProperties( url, credentials[0], credentials[1], properties );
+
+      log.logDetailed( "Acquiring JDBC connection for database [" + databaseMeta.getName() + "] using driver class [" + classname + "]..." );
+      long startJdbc = System.currentTimeMillis();
+      if ( usingDynamicDriver ) {
+        connection = openConnectionViaDynamicDriver( jdbcDriverClass, url, properties );
+      } else {
+        connection = DriverManager.getConnection( url, properties );
+      }
+      log.logDetailed( "JDBC connection acquired for database [" + databaseMeta.getName() + "] in " + ( System.currentTimeMillis() - startJdbc ) + " ms" );
+    } catch ( SQLException sqlException ) {
+      closeDynamicClassLoader();
+      throw new KettleDatabaseException(
+        BaseMessages.getString( PKG, "Database.Exception.ConnectionTestFailed", toString() ), sqlException );
+    } catch ( Exception e ) {
+      closeDynamicClassLoader();
+      throw new KettleDatabaseException( "Error connecting to database: (using class " + classname + ")", e );
+    }
+  }
+
+  private void loadStaticDriver( String classname, PluginInterface plugin ) throws KettleDatabaseException {
     try {
       synchronized ( java.sql.DriverManager.class ) {
         ClassLoader classLoader = PluginRegistry.getInstance().getClassLoader( plugin );
         Class<?> driverClass = classLoader.loadClass( classname );
-
         // Only need DelegatingDriver for drivers not from our classloader
         if ( driverClass.getClassLoader() != this.getClass().getClassLoader() ) {
-          String pluginId =
-            PluginRegistry.getInstance().getPluginId( DatabasePluginType.class, databaseMeta.getDatabaseInterface() );
-          Set<String> registeredDriversFromPlugin = registeredDrivers.get( pluginId );
-          if ( registeredDriversFromPlugin == null ) {
-            registeredDriversFromPlugin = new HashSet<>();
-            registeredDrivers.put( pluginId, registeredDriversFromPlugin );
-          }
-          // Prevent registering multiple delegating drivers for same class, plugin
-          if ( !registeredDriversFromPlugin.contains( driverClass.getCanonicalName() ) ) {
-            DriverManager.registerDriver( new DelegatingDriver( (Driver) driverClass.newInstance() ) );
-            registeredDriversFromPlugin.add( driverClass.getCanonicalName() );
-          }
+          registerDelegatingDriver( driverClass );
         } else {
           // Trigger static register block in driver class
           Class.forName( classname );
@@ -539,72 +656,115 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     } catch ( Exception e ) {
       throw new KettleDatabaseException( "Exception while loading class", e );
     }
+  }
 
+  private void registerDelegatingDriver( Class<?> driverClass ) throws KettleDatabaseException {
+    String pluginId =
+      PluginRegistry.getInstance().getPluginId( DatabasePluginType.class, databaseMeta.getDatabaseInterface() );
+    Set<String> registeredDriversFromPlugin = registeredDrivers.computeIfAbsent( pluginId, k -> new HashSet<>() );
+    // Prevent registering multiple delegating drivers for same class, plugin
+    if ( !registeredDriversFromPlugin.contains( driverClass.getCanonicalName() ) ) {
+      try {
+        DriverManager.registerDriver( new DelegatingDriver( (Driver) driverClass.getDeclaredConstructor().newInstance() ) );
+      } catch ( InstantiationException | IllegalAccessException | NoSuchMethodException | java.lang.reflect.InvocationTargetException | SQLException e ) {
+        throw new KettleDatabaseException(
+          "Unable to register delegating driver for class " + driverClass.getCanonicalName(), e );
+      }
+      registeredDriversFromPlugin.add( driverClass.getCanonicalName() );
+    }
+  }
+
+  private String resolveUrl( String partitionId ) throws KettleDatabaseException {
+    if ( databaseMeta.isPartitioned() && !Utils.isEmpty( partitionId ) ) {
+      return environmentSubstitute( databaseMeta.getURL( partitionId ) );
+    }
+    return environmentSubstitute( databaseMeta.getURL() );
+  }
+
+  private String[] resolveCredentials( String partitionId ) {
+    if ( databaseMeta.isPartitioned() && !Utils.isEmpty( partitionId ) ) {
+      PartitionDatabaseMeta partition = databaseMeta.getPartitionMeta( partitionId );
+      if ( partition != null && !Utils.isEmpty( partition.getUsername() ) ) {
+        return new String[] { partition.getUsername(),
+          Encr.decryptPasswordOptionallyEncrypted( partition.getPassword() ) };
+      }
+    }
+    return new String[] {
+      environmentSubstitute( databaseMeta.getUsername() ),
+      Encr.decryptPasswordOptionallyEncrypted( environmentSubstitute( databaseMeta.getPassword() ) ) };
+  }
+
+  private String applyCredentialsToProperties( String url, String username, String password, Properties properties ) {
+    if ( databaseMeta.supportsOptionsInURL() ) {
+      if ( !Utils.isEmpty( username ) || !Utils.isEmpty( password ) ) {
+        // Allow for empty username with given password, in this case username must be given with one space
+        properties.put( "user", Const.NVL( username, " " ) );
+        properties.put( "password", Const.NVL( password, "" ) );
+        url = appendMssqlInstanceIfNeeded( url );
+      } // else: Perhaps the username is in the URL or no username is required...
+    } else {
+      if ( !Utils.isEmpty( username ) ) {
+        properties.put( "user", username );
+      }
+      if ( !Utils.isEmpty( password ) ) {
+        properties.put( "password", password );
+      }
+    }
+    return url;
+  }
+
+  private String appendMssqlInstanceIfNeeded( String url ) {
+    if ( databaseMeta.getDatabaseInterface() instanceof MSSQLServerNativeDatabaseMeta ) {
+      // Handle MSSQL Instance name. Would rather this was handled in the dialect
+      // but cannot (without refactor) get to variablespace for variable substitution from
+      // a BaseDatabaseMeta subclass.
+      String instance = environmentSubstitute( databaseMeta.getSQLServerInstance() );
+      if ( !Utils.isEmpty( instance ) ) {
+        return url + ";instanceName=" + instance;
+      }
+    }
+    return url;
+  }
+
+  private static Map<String, Object> getMetadataFromDriver( String driverId ) throws KettleDatabaseException {
+    String serviceBaseUrl = Const.getJdbcDriverServiceUrl();
+    if ( serviceBaseUrl == null || serviceBaseUrl.trim().isEmpty() ) {
+      throw new KettleDatabaseException(
+        "Cannot fetch driver metadata for '" + driverId + "': JDBC_DRIVER_SERVICE_URL is not configured. "
+          + "Set the environment variable or system property 'JDBC_DRIVER_SERVICE_URL'." );
+    }
+
+    String metadataUrl = serviceBaseUrl + "/api/v1/connection-drivers/" + driverId;
+    HttpURLConnection conn = null;
     try {
-      String url;
+      conn = (HttpURLConnection) new URL( metadataUrl ).openConnection();
+      conn.setConnectTimeout( 10_000 );
+      conn.setReadTimeout( 60_000 );
+      conn.setRequestMethod( "GET" );
 
-      if ( databaseMeta.isPartitioned() && !Utils.isEmpty( partitionId ) ) {
-        url = environmentSubstitute( databaseMeta.getURL( partitionId ) );
-      } else {
-        url = environmentSubstitute( databaseMeta.getURL() );
+      String bearerToken = CmsTokenProvider.getInstance().getToken();
+      if ( bearerToken != null ) {
+        conn.setRequestProperty( "Authorization", "Bearer " + bearerToken );
       }
 
-      String clusterUsername = null;
-      String clusterPassword = null;
-      if ( databaseMeta.isPartitioned() && !Utils.isEmpty( partitionId ) ) {
-        // Get the cluster information...
-        PartitionDatabaseMeta partition = databaseMeta.getPartitionMeta( partitionId );
-        if ( partition != null ) {
-          clusterUsername = partition.getUsername();
-          clusterPassword = Encr.decryptPasswordOptionallyEncrypted( partition.getPassword() );
-        }
+      int status = conn.getResponseCode();
+      if ( status != HttpURLConnection.HTTP_OK ) {
+        throw new KettleDatabaseException(
+          "Failed to fetch driver metadata for '" + driverId + "' — HTTP " + status + " from " + metadataUrl );
       }
 
-      String username;
-      String password;
-      if ( !Utils.isEmpty( clusterUsername ) ) {
-        username = clusterUsername;
-        password = clusterPassword;
-      } else {
-        username = environmentSubstitute( databaseMeta.getUsername() );
-        password = Encr.decryptPasswordOptionallyEncrypted( environmentSubstitute( databaseMeta.getPassword() ) );
+      try ( java.io.InputStream is = conn.getInputStream() ) {
+        return new ObjectMapper().readValue( is, Map.class );
       }
-
-      Properties properties = databaseMeta.getConnectionProperties();
-
-      if ( databaseMeta.supportsOptionsInURL() ) {
-        if ( !Utils.isEmpty( username ) || !Utils.isEmpty( password ) ) {
-          // Allow for empty username with given password, in this case username must be given with one space
-          properties.put( "user", Const.NVL( username, " " ) );
-          properties.put( "password", Const.NVL( password, "" ) );
-          if ( databaseMeta.getDatabaseInterface() instanceof MSSQLServerNativeDatabaseMeta ) {
-            // Handle MSSQL Instance name. Would rather this was handled in the dialect
-            // but cannot (without refactor) get to variablespace for variable substitution from
-            // a BaseDatabaseMeta subclass.
-            String instance = environmentSubstitute( databaseMeta.getSQLServerInstance() );
-            if ( !Utils.isEmpty( instance ) ) {
-              url += ";instanceName=" + instance;
-            }
-          }
-          connection = DriverManager.getConnection( url, properties );
-        } else {
-          // Perhaps the username is in the URL or no username is required...
-          connection = DriverManager.getConnection( url, properties );
-        }
-      } else {
-        if ( !Utils.isEmpty( username ) ) {
-          properties.put( "user", username );
-        }
-        if ( !Utils.isEmpty( password ) ) {
-          properties.put( "password", password );
-        }
-
-        connection = DriverManager.getConnection( url, properties );
-      }
-    } catch ( SQLException sqlException ) {
-      throw new KettleDatabaseException( BaseMessages.getString( PKG, "Database.Exception.ConnectionTestFailed", toString() ), sqlException );
+    } catch ( KettleDatabaseException e ) {
+      throw e;
     } catch ( Exception e ) {
-      throw new KettleDatabaseException( "Error connecting to database: (using class " + classname + ")", e );
+      throw new KettleDatabaseException(
+        "Failed to fetch driver metadata for '" + driverId + "' from '" + metadataUrl + "': " + e.getMessage(), e );
+    } finally {
+      if ( conn != null ) {
+        conn.disconnect();
+      }
     }
   }
 
@@ -612,11 +772,9 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
    * Disconnect from the database and close all open prepared statements.
    */
   public synchronized void disconnect() {
-    if ( connection == null ) {
-      return; // Nothing to do...
-    }
     try {
-      if ( connection.isClosed() ) {
+      if ( connection == null || connection.isClosed() ) {
+        closeDynamicClassLoader();
         return; // Nothing to do...
       }
     } catch ( SQLException ex ) {
@@ -625,54 +783,27 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       log.logError( Const.getStackTracker( ex ) );
     }
 
+    log.logDetailed( "Disconnecting from database [" + databaseMeta.getName() + "]..." );
+    long startDisconnect = System.currentTimeMillis();
+
     if ( pstmt != null ) {
-      try {
-        pstmt.close();
-      } catch ( SQLException ex ) {
-        // cannot do anything about this but log it
-        log.logError( "Error closing statement:" + Const.CR + ex.getMessage() );
-        log.logError( Const.getStackTracker( ex ) );
-      }
+      tryCloseAndLog( pstmt, "statement" );
       pstmt = null;
     }
     if ( prepStatementLookup != null ) {
-      try {
-        prepStatementLookup.close();
-      } catch ( SQLException ex ) {
-        // cannot do anything about this but log it
-        log.logError( "Error closing lookup statement:" + Const.CR + ex.getMessage() );
-        log.logError( Const.getStackTracker( ex ) );
-      }
+      tryCloseAndLog( prepStatementLookup, "lookup statement" );
       prepStatementLookup = null;
     }
     if ( prepStatementInsert != null ) {
-      try {
-        prepStatementInsert.close();
-      } catch ( SQLException ex ) {
-        // cannot do anything about this but log it
-        log.logError( "Error closing insert statement:" + Const.CR + ex.getMessage() );
-        log.logError( Const.getStackTracker( ex ) );
-      }
+      tryCloseAndLog( prepStatementInsert, "insert statement" );
       prepStatementInsert = null;
     }
     if ( prepStatementUpdate != null ) {
-      try {
-        prepStatementUpdate.close();
-      } catch ( SQLException ex ) {
-        // cannot do anything about this but log it
-        log.logError( "Error closing update statement:" + Const.CR + ex.getMessage() );
-        log.logError( Const.getStackTracker( ex ) );
-      }
+      tryCloseAndLog( prepStatementUpdate, "update statement" );
       prepStatementUpdate = null;
     }
     if ( pstmtSeq != null ) {
-      try {
-        pstmtSeq.close();
-      } catch ( SQLException ex ) {
-        // cannot do anything about this but log it
-        log.logError( "Error closing seq statement:" + Const.CR + ex.getMessage() );
-        log.logError( Const.getStackTracker( ex ) );
-      }
+      tryCloseAndLog( pstmtSeq, "seq statement" );
       pstmtSeq = null;
     }
 
@@ -702,17 +833,154 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     } finally {
       // Always close the connection, irrespective of what happens above...
       try {
+        if ( dataSource instanceof CachedManagedDataSourceInterface ) {
+          ( (CachedManagedDataSourceInterface) dataSource ).removeInUseBy( ownerName );
+        }
+        dataSource = null;
         closeConnectionOnly();
+        log.logDetailed( "Disconnected from database [" + databaseMeta.getName() + "] in " + ( System.currentTimeMillis() - startDisconnect ) + " ms" );
       } catch ( KettleDatabaseException ignoredKde ) { // The only exception thrown from closeConnectionOnly()
         // cannot do anything about this but log it
         log.logError(
           "Error disconnecting from database - closeConnectionOnly failed:" + Const.CR + ignoredKde.getMessage() );
         log.logError( Const.getStackTracker( ignoredKde ) );
+      } finally {
+        // Release the isolated JAR classloader and driver reference so the JAR file handle
+        // is freed (critical on Windows) and the classloader is eligible for GC.
+        // Called here — after closeConnectionOnly() — to guarantee the TCP connection is
+        // fully closed before the classloader that loaded its driver classes is torn down.
+        closeDynamicClassLoader();
       }
     }
   }
 
-  @Override public void close() {
+  /**
+   * Closes the dynamic driver ClassLoader and releases the JAR file handle.
+   * Null-safe and idempotent — safe to call when no dynamic driver is loaded or multiple times.
+   */
+  private void closeDynamicClassLoader() {
+    dynamicDriver.set( null );
+    ChildFirstURLClassLoader loader = dynamicDriverClassLoader.getAndSet( null );
+    if ( loader != null ) {
+      try {
+        loader.close();
+      } catch ( Exception e ) {
+        // Best-effort cleanup — log but do not propagate so disconnect() always completes.
+        log.logDebug( "Warning: failed to close dynamic driver ClassLoader: " + errorMsg( e ) );
+      }
+    }
+  }
+
+  /**
+   * Resolves the driver JAR path and loads the {@link Driver}, setting {@link #dynamicDriver}
+   * ready for {@link #openConnectionViaDynamicDriver}.
+   *
+   * <p><b>Cached path</b> ({@code KETTLE_DYNAMIC_DRIVER_CACHE_ENABLED=Y}):
+   * Delegates to {@link DynamicDriverCache#getOrLoadDriver}, which reuses the same
+   * {@link Driver} instance and classloader JVM-wide. No JAR reads after the first connect.
+   * {@link #dynamicDriverClassLoader} is left {@code null} because the classloader lifetime
+   * is managed by {@link DynamicDriverCache}, not by this {@link Database} instance.
+   *
+   * <p><b>No-cache path</b> (default — property absent or not {@code Y}):
+   * Creates a fresh {@link ChildFirstURLClassLoader} per connection, loads the driver class,
+   * and stores the loader in {@link #dynamicDriverClassLoader} so that
+   * {@link #closeDynamicClassLoader()} closes it (and releases the JAR file handle) on
+   * {@link #disconnect()}. Each connection is fully isolated with no shared JVM state.
+   */
+  private void loadDynamicDriver( String driverId, String effectiveClassName, List<String> listDriverExtraJars ) throws KettleDatabaseException {
+    // Always resolve first — returns immediately if driverId exists on disk,
+    // otherwise walks the fallback chain. The resolved path is stable for the connection lifetime.
+    String resolvedPath = JdbcDriverResolver.resolve( driverId );
+
+    if ( !resolvedPath.toLowerCase().endsWith( ".jar" ) ) {
+      throw new KettleDatabaseException( "Dynamic driver path does not point to a JAR file: " + resolvedPath );
+    }
+
+    List<String> extraJarPaths = JdbcDriverResolver.resolveAll( listDriverExtraJars );
+    boolean cacheEnabled = "Y".equalsIgnoreCase(
+      EnvUtil.getSystemProperty( Const.KETTLE_DYNAMIC_DRIVER_CACHE_ENABLED ) );
+
+    if ( cacheEnabled ) {
+      // Cached path: Driver is shared JVM-wide; classloader is owned by DynamicDriverCache.
+      dynamicDriver.set( DynamicDriverCache.getInstance().getOrLoadDriver( resolvedPath, effectiveClassName, extraJarPaths ) );
+      dynamicDriverClassLoader.set( null );
+    } else {
+      // No-cache path: fresh classloader and Driver per connection; closed on disconnect().
+      List<URL> urls = JdbcDriverResolver.buildUrlList( resolvedPath, extraJarPaths );
+      ChildFirstURLClassLoader loader = null;
+      try {
+        loader = new ChildFirstURLClassLoader( urls.toArray( new URL[ 0 ] ), Database.class.getClassLoader() );
+        Class<?> driverClass = loader.loadClass( effectiveClassName );
+        Driver driver = (Driver) driverClass.getDeclaredConstructor().newInstance();
+        dynamicDriver.set( driver );
+        dynamicDriverClassLoader.set( loader );
+      } catch ( Exception e ) {
+        if ( loader != null ) {
+          try {
+            loader.close();
+          } catch ( Exception ignored ) {
+            // best-effort
+          }
+        }
+        throw new KettleDatabaseException(
+          "Dynamic driver: failed to load '" + effectiveClassName + "' from '" + resolvedPath + "': " + e.getMessage(), e );
+      }
+    }
+  }
+
+  /**
+   * Opens a JDBC connection via the already-loaded {@link #dynamicDriver}, bypassing
+   * {@link DriverManager}. Validates URL acceptance before connecting.
+   */
+  private Connection openConnectionViaDynamicDriver( String effectiveClassName, String url, Properties properties )
+    throws KettleDatabaseException {
+    Driver localDriver = dynamicDriver.get();
+    if ( localDriver == null ) {
+      throw new KettleDatabaseException(
+        "Dynamic driver for '" + effectiveClassName + "' has been unloaded (disconnect was called concurrently). "
+          + "Reconnect to reload the driver." );
+    }
+    boolean accepts;
+    try {
+      accepts = localDriver.acceptsURL( url );
+    } catch ( Exception e ) {
+      throw new KettleDatabaseException(
+        "Dynamic driver '" + effectiveClassName + "' threw exception checking URL '"
+          + url + "': " + errorMsg( e ), e );
+    }
+    if ( !accepts ) {
+      throw new KettleDatabaseException(
+        "Dynamic driver '" + effectiveClassName + "' does not accept URL: " + url
+          + " — check the JDBC URL format." );
+    }
+    try {
+      Connection c = localDriver.connect( url, properties );
+      if ( c == null ) {
+        throw new KettleDatabaseException(
+          "Dynamic driver '" + effectiveClassName + "' returned null for URL: " + url
+            + " — check that the URL format and driver class are correct." );
+      }
+      return c;
+    } catch ( KettleDatabaseException e ) {
+      throw e;
+    } catch ( Exception e ) {
+      throw new KettleDatabaseException(
+        "Dynamic driver '" + effectiveClassName + "' failed to connect to URL '"
+          + url + "': " + errorMsg( e ), e );
+    }
+  }
+
+  /**
+   * Returns the exception message, or the simple class name when the message is null.
+   * Avoids repetitive inline ternary expressions in error-handling code.
+   */
+  private static String errorMsg( Exception e ) {
+    return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+  }
+
+
+  @Override
+  public void close() {
     disconnect();
   }
 
@@ -735,6 +1003,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       }
     } catch ( SQLException e ) {
       throw new KettleDatabaseException( "Error disconnecting from database '" + toString() + "'", e );
+    } finally {
+      closeDynamicClassLoader();
     }
   }
 
@@ -778,10 +1048,14 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   /**
    * Specify after how many rows a commit needs to occur when inserting or updating values.
    *
-   * @param commsize The number of rows to wait before doing a commit on the connection.
+   * @param commitSize The number of rows to wait before doing a commit on the connection.
    */
-  public void setCommit( int commsize ) {
-    commitsize = commsize;
+  public void setCommit( int commitSize ) {
+    setCommitSize( commitSize );
+    setAutoCommit();
+  }
+
+  public void setAutoCommit() {
     String onOff = ( commitsize <= 0 ? "on" : "off" );
     try {
       connection.setAutoCommit( commitsize <= 0 );
@@ -795,6 +1069,10 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     }
   }
 
+  public void setCommitSize( int size ) {
+    commitsize = size;
+  }
+
   public void setAutoCommit( boolean useAutoCommit ) throws KettleDatabaseException {
     try {
       connection.setAutoCommit( useAutoCommit );
@@ -806,7 +1084,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         throw new KettleDatabaseException( BaseMessages.getString(
           PKG, "Database.Exception.UnableToDisableAutoCommit", toString() ) );
       }
-
     }
   }
 
@@ -921,7 +1198,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
           log.logDetailed( "No rollback possible on database connection [" + toString() + "]" );
         }
       }
-
     } catch ( SQLException e ) {
       throw new KettleDatabaseException( "Error performing rollback on connection", e );
     }
@@ -995,8 +1271,10 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   }
 
   public void closeLookup() throws KettleDatabaseException {
-    closePreparedStatement( pstmt );
-    pstmt = null;
+    if ( pstmt != null ) {
+      closePreparedStatement( pstmt );
+      pstmt = null;
+    }
   }
 
   public void closePreparedStatement( PreparedStatement ps ) throws KettleDatabaseException {
@@ -1009,25 +1287,48 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     }
   }
 
+  /**
+   * Invokes the {@link AutoCloseable#close()} method on the given object, logging any exceptions that occur.
+   *
+   * @param closeable      the object to close
+   * @param objDescription the description of the closeable object, used in logging
+   */
+  protected void tryCloseAndLog( AutoCloseable closeable, String objDescription ) {
+    try {
+      closeable.close();
+    } catch ( Exception ex ) {
+      log.logError( "Error closing " + objDescription + ":" + Const.CR + ex.getMessage() );
+      log.logError( Const.getStackTracker( ex ) );
+    }
+  }
+
+  /**
+   * Invokes the {@link AutoCloseable#close()} method on the given object, throwing a {@link KettleDatabaseException}
+   * encapsulating any exception that occurs.
+   *
+   * @param closeable      the object to close
+   * @param objDescription the description of the closeable object, used in exception message
+   */
+  protected void tryCloseAndThrow( AutoCloseable closeable, String objDescription ) throws KettleDatabaseException {
+    try {
+      closeable.close();
+    } catch ( Exception ex ) {
+      throw new KettleDatabaseException( "Error closing " + objDescription, ex );
+    }
+  }
+
+
   public void closeInsert() throws KettleDatabaseException {
     if ( prepStatementInsert != null ) {
-      try {
-        prepStatementInsert.close();
-        prepStatementInsert = null;
-      } catch ( SQLException e ) {
-        throw new KettleDatabaseException( "Error closing insert prepared statement.", e );
-      }
+      tryCloseAndThrow( prepStatementInsert, "insert prepared statement" );
+      prepStatementInsert = null;
     }
   }
 
   public void closeUpdate() throws KettleDatabaseException {
     if ( prepStatementUpdate != null ) {
-      try {
-        prepStatementUpdate.close();
-        prepStatementUpdate = null;
-      } catch ( SQLException e ) {
-        throw new KettleDatabaseException( "Error closing update prepared statement.", e );
-      }
+      tryCloseAndThrow( prepStatementUpdate, "update prepared statement" );
+      prepStatementUpdate = null;
     }
   }
 
@@ -1057,13 +1358,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
   public void setProcValues( RowMetaInterface rowMeta, Object[] data, int[] argnrs, String[] argdir, boolean result )
     throws KettleDatabaseException {
-    int pos;
-
-    if ( result ) {
-      pos = 2;
-    } else {
-      pos = 1;
-    }
+    int pos = result ? 2 : 1;
 
     for ( int i = 0; i < argnrs.length; i++ ) {
       if ( argdir[ i ].equalsIgnoreCase( "IN" ) || argdir[ i ].equalsIgnoreCase( "INOUT" ) ) {
@@ -1071,10 +1366,9 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         Object value = data[ argnrs[ i ] ];
 
         setValue( cstmt, valueMeta, value, pos );
-        pos++;
-      } else {
-        pos++; // next parameter when OUT
       }
+
+      pos++;
     }
   }
 
@@ -1082,7 +1376,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     throws KettleDatabaseException {
 
     v.setPreparedStatementValue( databaseMeta, ps, pos, object );
-
   }
 
   public void setValues( RowMetaAndData row, PreparedStatement ps ) throws KettleDatabaseException {
@@ -1140,15 +1433,15 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       if ( resultSetMetaData == null ) {
         resultSetMetaData = ps.getMetaData();
       }
-      RowMetaInterface rowMeta;
+      RowMetaInterface rowMetaInterface;
       if ( resultSetMetaData == null ) {
-        rowMeta = new RowMeta();
-        rowMeta.addValueMeta( new ValueMetaInteger( "ai-key" ) );
+        rowMetaInterface = new RowMeta();
+        rowMetaInterface.addValueMeta( new ValueMetaInteger( "ai-key" ) );
       } else {
-        rowMeta = getRowInfo( resultSetMetaData, false, false );
+        rowMetaInterface = getRowInfo( resultSetMetaData, false, false );
       }
 
-      return new RowMetaAndData( rowMeta, getRow( keys, resultSetMetaData, rowMeta ) );
+      return new RowMetaAndData( rowMetaInterface, getRow( keys, resultSetMetaData, rowMetaInterface ) );
     } catch ( Exception ex ) {
       throw new KettleDatabaseException( "Unable to retrieve key(s) from auto-increment field(s)", ex );
     }
@@ -1169,15 +1462,9 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         pstmtSeq =
           connection.prepareStatement( databaseMeta.getSeqNextvalSQL( databaseMeta.stripCR( schemaSequence ) ) );
       }
-      ResultSet rs = null;
-      try {
-        rs = pstmtSeq.executeQuery();
+      try ( ResultSet rs = pstmtSeq.executeQuery() ) {
         if ( rs.next() ) {
-          retval = Long.valueOf( rs.getLong( 1 ) );
-        }
-      } finally {
-        if ( rs != null ) {
-          rs.close();
+          retval = rs.getLong( 1 );
         }
       }
     } catch ( SQLException ex ) {
@@ -1307,22 +1594,20 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
       written++;
 
-      if ( handleCommit ) { // some steps handle the commit themselves (see e.g.
-        // TableOutput step)
-        if ( !isAutoCommit() && ( written % commitsize ) == 0 ) {
-          if ( useBatchInsert ) {
-            isBatchUpdate = true;
-            debug = "insertRow executeBatch commit";
-            ps.executeBatch();
-            commit();
-            ps.clearBatch();
-          } else {
-            debug = "insertRow normal commit";
-            commit();
-          }
-          written = 0;
-          rowsAreSafe = true;
+      // some steps handle the commit themselves (see e.g. TableOutput step)
+      if ( handleCommit && !isAutoCommit() && ( written % commitsize ) == 0 ) {
+        if ( useBatchInsert ) {
+          isBatchUpdate = true;
+          debug = "insertRow executeBatch commit";
+          ps.executeBatch();
+          commit();
+          ps.clearBatch();
+        } else {
+          debug = "insertRow normal commit";
+          commit();
         }
+        written = 0;
+        rowsAreSafe = true;
       }
 
       return rowsAreSafe;
@@ -1391,9 +1676,9 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   /**
    * Close the prepared statement of the insert statement.
    *
-   * @param ps             The prepared statement to empty and close.
-   * @param batch          true if you are using batch processing
-   * @param psBatchCounter The number of rows on the batch queue
+   * @param ps           The prepared statement to empty and close.
+   * @param batch        true if you are using batch processing
+   * @param batchCounter The number of rows on the batch queue
    * @throws KettleDatabaseException
    */
   public void emptyAndCommit( PreparedStatement ps, boolean batch, int batchCounter ) throws KettleDatabaseException {
@@ -1465,9 +1750,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   /**
    * Close the prepared statement of the insert statement.
    *
-   * @param ps             The prepared statement to empty and close.
-   * @param batch          true if you are using batch processing (typically true for this method)
-   * @param psBatchCounter The number of rows on the batch queue
+   * @param ps    The prepared statement to empty and close.
+   * @param batch true if you are using batch processing (typically true for this method)
    * @throws KettleDatabaseException
    * @deprecated use emptyAndCommit() instead (pass in the number of rows left in the batch)
    */
@@ -1636,13 +1920,12 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
               if ( rs != null ) {
                 Object[] row = getRow( rs );
                 while ( row != null ) {
-                  result.setNrLinesRead( result.getNrLinesRead() + 1 );
+                  result.increaseLinesRead( 1 );
                   if ( log.isDetailed() ) {
                     log.logDetailed( rowMeta.getString( row ) );
                   }
                   row = getRow( rs );
                 }
-
               } else {
                 if ( log.isDebug() ) {
                   log.logDebug( "Error executing query: " + Const.CR + sql );
@@ -1726,7 +2009,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
         if ( canWeSetFetchSize( pstmt ) ) {
           int maxRows = pstmt.getMaxRows();
-          int fs = Const.FETCH_SIZE <= maxRows ? maxRows : Const.FETCH_SIZE;
+          int fs = Math.max( Const.FETCH_SIZE, maxRows );
           if ( databaseMeta.isMySQLVariant() ) {
             setMysqlFetchSize( pstmt, fs, maxRows );
           } else {
@@ -1748,7 +2031,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         selStmt = connection.createStatement();
         log.snap( Metrics.METRIC_DATABASE_CREATE_SQL_STOP, databaseMeta.getName() );
         if ( canWeSetFetchSize( selStmt ) ) {
-          int fs = Const.FETCH_SIZE <= selStmt.getMaxRows() ? selStmt.getMaxRows() : Const.FETCH_SIZE;
+          int fs = Math.max( Const.FETCH_SIZE, selStmt.getMaxRows() );
           if ( databaseMeta.getDatabaseInterface().isMySQLVariant()
             && databaseMeta.isStreamingResults() ) {
             selStmt.setFetchSize( Integer.MIN_VALUE );
@@ -1766,10 +2049,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         log.snap( Metrics.METRIC_DATABASE_EXECUTE_SQL_STOP, databaseMeta.getName() );
       }
 
-      // MySQL Hack only. It seems too much for the cursor type of operation on
-      // MySQL, to have another cursor opened
-      // to get the length of a String field. So, on MySQL, we ingore the length
-      // of Strings in result rows.
+      // MySQL Hack only. It seems too much for the cursor type of operation on MySQL, to have another cursor opened
+      // to get the length of a String field. So, on MySQL, we ignore the length of Strings in result rows.
       //
       rowMeta = getRowInfo( res.getMetaData(), databaseMeta.isMySQLVariant(), lazyConversion );
     } catch ( SQLException ex ) {
@@ -1804,7 +2085,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
       if ( canWeSetFetchSize( ps ) ) {
         int maxRows = ps.getMaxRows();
-        int fs = Const.FETCH_SIZE <= maxRows ? maxRows : Const.FETCH_SIZE;
+        int fs = Math.max( Const.FETCH_SIZE, maxRows );
         // mysql have some restriction on fetch size assignment
         if ( databaseMeta.isMySQLVariant() ) {
           setMysqlFetchSize( ps, fs, maxRows );
@@ -1832,8 +2113,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       log.snap( Metrics.METRIC_DATABASE_GET_ROW_META_START, databaseMeta.getName() );
       rowMeta = getRowInfo( res.getMetaData(), databaseMeta.isMySQLVariant(), false );
       log.snap( Metrics.METRIC_DATABASE_GET_ROW_META_STOP, databaseMeta.getName() );
-    } catch ( SQLException ex ) {
-      throw new KettleDatabaseException( "ERROR executing query", ex );
     } catch ( Exception e ) {
       throw new KettleDatabaseException( "ERROR executing query", e );
     } finally {
@@ -2016,7 +2295,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
    * <p>Contrary to previous versions of similar duplicated methods, this implementation
    * does not require quoted identifiers.
    *
-   * @param schema     The name of the schema to check.
+   * @param schemaname The name of the schema to check.
    * @param tablename  The name of the table to check.
    * @param columnname The name of the column to check.
    * @return true if the table exists, false if it doesn't.
@@ -2134,7 +2413,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
    * Check if an index on certain fields in a table exists.
    *
    * @param tableName The table on which the index is checked
-   * @param idxFields The fields on which the indexe is checked
+   * @param idxFields The fields on which the index is checked
    * @return True if the index exists
    */
   public boolean checkIndexExists( String tableName, String[] idxFields ) throws KettleDatabaseException {
@@ -2393,17 +2672,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
 
     // No cache entry found
 
-    // The new method of retrieving the query fields fails on Oracle because
-    // they failed to implement the getMetaData method on a prepared statement.
-    // (!!!)
-    // Even recent drivers like 10.2 fail because of it.
-    //
-    // There might be other databases that don't support it (we have no
-    // knowledge of this at the time of writing).
-    // If we discover other RDBMSs, we will create an interface for it.
-    // For now, we just try to get the field layout on the re-bound in the
-    // exception block below.
-    //
     try {
       if ( databaseMeta.supportsPreparedStatementMetadataRetrieval() ) {
         // On with the regular program.
@@ -2745,21 +3013,24 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     long startTime = System.currentTimeMillis();
 
     try {
+      // PDI-19750 - synchronize on the connection to prevent data inconsistency
+      // when multiple Database objects share the same connection and access ResultSets concurrently
+      synchronized ( connection ) {
+        int nrcols = rowInfo.size();
+        Object[] data = RowDataUtil.allocateRowData( nrcols );
 
-      int nrcols = rowInfo.size();
-      Object[] data = RowDataUtil.allocateRowData( nrcols );
+        if ( rs.next() ) {
+          for ( int i = 0; i < nrcols; i++ ) {
+            ValueMetaInterface val = rowInfo.getValueMeta( i );
 
-      if ( rs.next() ) {
-        for ( int i = 0; i < nrcols; i++ ) {
-          ValueMetaInterface val = rowInfo.getValueMeta( i );
-
-          data[ i ] = databaseMeta.getValueFromResultSet( rs, val, i );
+            data[ i ] = databaseMeta.getValueFromResultSet( rs, val, i );
+          }
+        } else {
+          data = null;
         }
-      } else {
-        data = null;
-      }
 
-      return data;
+        return data;
+      }
     } catch ( Exception ex ) {
       throw new KettleDatabaseException( "Couldn't get row from result set", ex );
     } finally {
@@ -3311,7 +3582,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   }
 
   public void truncateTable( String schema, String tablename ) throws KettleDatabaseException {
-    if ( Utils.isEmpty( connectionGroup ) ) {
+    if ( Utils.isEmpty( connectionGroup ) && !databaseMeta.getPluginId().equalsIgnoreCase(
+      "MySQL" ) ) { // this is a hack to fix a know issue on MySQL issue name on Pentaho side BISERVER-14546
       String truncateStatement = databaseMeta.getTruncateTableStatement( schema, tablename );
       if ( truncateStatement == null ) {
         throw new KettleDatabaseException( "Truncate table not supported by "
@@ -3828,6 +4100,32 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     }
   }
 
+  /**
+   * Iterates over the first 'limit' rows of the ResultSet obtained from the given SQL statement,
+   * executing the given callback for each row. If limit <= 0, all rows are processed.
+   *
+   * @param sql      The SQL statement to execute
+   * @param limit    The maximum number of rows to process (<=0 means unlimited)
+   * @param callback The callback to execute for each row (receives Object[] row)
+   * @throws KettleDatabaseException if something goes wrong
+   */
+  public void forEachRow( String sql, int limit, java.util.function.Consumer<Object[]> callback )
+    throws KettleDatabaseException {
+    try ( ResultSet rset = openQuery( sql ) ) {
+      int count = 0;
+      while ( rset != null && ( limit <= 0 || count < limit ) ) {
+        Object[] row = getRow( rset );
+        if ( row == null ) {
+          break;
+        }
+        callback.accept( row );
+        count++;
+      }
+    } catch ( Exception e ) {
+      throw new KettleDatabaseException( "Error executing forEachRow", e );
+    }
+  }
+
   public List<Object[]> getFirstRows( String tableName, int limit ) throws KettleDatabaseException {
     return getFirstRows( tableName, limit, null );
   }
@@ -4017,7 +4315,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         if ( includeSchema ) {
           res.add( databaseMeta.getQuotedSchemaTableCombination( schema, view ) );
         } else {
-          res.add( view );
+          res.add( databaseMeta.getQuotedSchemaTableCombination( null, view ) );
         }
       }
     }
@@ -4284,12 +4582,12 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
           String procSchema = rowMeta.getString( row, "PROCEDURE_SCHEM", null );
           String procName = rowMeta.getString( row, "PROCEDURE_NAME", "" );
 
-          StringBuilder name = new StringBuilder( "" );
+          StringBuilder name = new StringBuilder();
           if ( procCatalog != null ) {
-            name.append( procCatalog ).append( "." );
+            name.append( procCatalog ).append( '.' );
           }
           if ( procSchema != null ) {
-            name.append( procSchema ).append( "." );
+            name.append( procSchema ).append( '.' );
           }
 
           name.append( procName );
@@ -4624,7 +4922,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
           } else {
             // Save the update count if it is available (> -1)
             updateCount = cstmt.getUpdateCount();
-
           }
 
           moreResults = cstmt.getMoreResults();
@@ -4635,14 +4932,12 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
             rs = null;
           }
         }
-
       } while ( moreResults || ( updateCount > -1 ) );
 
       return ret;
     } catch ( Exception ex ) {
       throw new KettleDatabaseException( "Unable to call procedure", ex );
     }
-
   }
 
   public void closeProcedureStatement() throws KettleDatabaseException {
@@ -4667,14 +4962,12 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
    */
 
   public String getDDLCreationTable( String tableName, RowMetaInterface fields ) throws KettleDatabaseException {
-    String retval;
 
     // First, check for reserved SQL in the input row r...
     databaseMeta.quoteReservedWords( fields );
     String quotedTk = databaseMeta.quoteField( null );
-    retval = getCreateTableStatement( tableName, fields, quotedTk, false, null, true );
 
-    return retval;
+    return getCreateTableStatement( tableName, fields, quotedTk, false, null, true );
   }
 
   /**
@@ -4722,8 +5015,8 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         }
         String name = fields.getValueMeta( i ).getName();
         ins.append( databaseMeta.quoteField( name ) );
-
       }
+
       ins.append( ") VALUES (" );
 
       java.text.SimpleDateFormat[] fieldDateFormatters = new java.text.SimpleDateFormat[ fields.size() ];
@@ -4734,7 +5027,7 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
         Object valueData = r[ i ];
 
         if ( i > 0 ) {
-          ins.append( "," );
+          ins.append( ',' );
         }
 
         // Check for null values...
@@ -4747,13 +5040,11 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
           switch ( valueMeta.getType() ) {
             case ValueMetaInterface.TYPE_BOOLEAN:
             case ValueMetaInterface.TYPE_STRING:
-              String string = valueMeta.getString( valueData );
               // Have the database dialect do the quoting.
               // This also adds the single quotes around the string (thanks to
               // PostgreSQL)
               //
-              string = databaseMeta.quoteSQLString( string );
-              ins.append( string );
+              ins.append( databaseMeta.quoteSQLString( valueMeta.getString( valueData ) ) );
               break;
             case ValueMetaInterface.TYPE_DATE:
               Date date = fields.getDate( r, i );
@@ -4766,12 +5057,12 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
                   ins.append( "TO_DATE('" ).append( fieldDateFormatters[ i ].format( date ) ).append(
                     "', 'YYYY/MM/DD HH24:MI:SS')" );
                 } else {
-                  ins.append( "'" + fields.getString( r, i ) + "'" );
+                  ins.append( '\'' ).append( fields.getString( r, i ) ).append( '\'' );
                 }
               } else {
                 try {
                   java.text.SimpleDateFormat formatter = new java.text.SimpleDateFormat( dateFormat );
-                  ins.append( "'" + formatter.format( fields.getDate( r, i ) ) + "'" );
+                  ins.append( '\'' ).append( formatter.format( fields.getDate( r, i ) ) ).append( '\'' );
                 } catch ( Exception e ) {
                   throw new KettleDatabaseException( "Error : ", e );
                 }
@@ -4782,7 +5073,6 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
               break;
           }
         }
-
       }
       ins.append( ')' );
     } catch ( Exception e ) {
@@ -4985,12 +5275,13 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
   /**
    * Execute an SQL statement inside a file on the database connection (has to be open)
    *
-   * @param sql The file that contains SQL to execute
+   * @param filename The file that contains SQL to execute
    * @return a Result object indicating the number of lines read, deleted, inserted, updated, ...
    * @throws KettleDatabaseException in case anything goes wrong.
    * @sendSinglestatement send one statement
    */
-  public Result execStatementsFromFile( String filename, boolean sendSinglestatement ) throws KettleException {
+  public Result execStatementsFromFile( Bowl bowl, String filename, boolean sendSinglestatement )
+    throws KettleException {
     FileObject sqlFile = null;
     InputStream is = null;
     InputStreamReader bis = null;
@@ -4998,18 +5289,16 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
       if ( Utils.isEmpty( filename ) ) {
         throw new KettleException( "Filename is missing!" );
       }
-      sqlFile = KettleVFS.getFileObject( filename );
+      sqlFile = KettleVFS.getInstance( bowl ).getFileObject( filename );
       if ( !sqlFile.exists() ) {
         throw new KettleException( "We can not find file [" + filename + "]!" );
       }
 
       is = KettleVFS.getInputStream( sqlFile );
       bis = new InputStreamReader( new BufferedInputStream( is, 500 ) );
-      StringBuilder lineStringBuilder = new StringBuilder( 256 );
-      lineStringBuilder.setLength( 0 );
 
       BufferedReader buff = new BufferedReader( bis );
-      String sLine = null;
+      String sLine;
       StringBuilder sql = new StringBuilder( Const.CR );
 
       while ( ( sLine = buff.readLine() ) != null ) {
@@ -5075,4 +5364,14 @@ public class Database implements VariableSpace, LoggingObjectInterface, Closeabl
     return Boolean.TRUE.toString().equals( useJdbcMeta );
   }
 
+  public void setOwnerName( String name ) {
+    ownerName = name;
+    if ( dataSource instanceof CachedManagedDataSourceInterface ) {
+      ( (CachedManagedDataSourceInterface) dataSource ).addInUseBy( ownerName );
+    }
+  }
+
+  public String getOwnerName() {
+    return ownerName;
+  }
 }

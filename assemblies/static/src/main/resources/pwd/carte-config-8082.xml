@@ -1,3 +1,14 @@
+<!-- ******************************************************************************
+ *
+ * Pentaho
+ *
+ * Copyright (C) 2026 by Pentaho Canada Inc. : http://www.pentaho.com
+ *
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
+ *
+ * Change Date: 2030-06-15
+ ******************************************************************************* -->
 <slave_config>
   <!-- 
      Document description...
@@ -26,6 +37,16 @@
   </masters>
 
   <report_to_masters>Y</report_to_masters>
+
+  <!--
+    Default behavior for direct job/trans execution URLs is deny-by-default for
+    non-pvfs schemes. The default allowlist is intentionally minimal: only
+    pvfs:// is permitted unless you explicitly add more schemes here.
+    Local paths without a scheme still require 'file' to be included.
+  -->
+  <allowedExecuteFileSchemes>
+    <scheme>pvfs</scheme>
+  </allowedExecuteFileSchemes>
 
   <slaveserver>
     <name>slave2-8082</name>

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.database;
 
@@ -30,11 +22,13 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Matchers.eq;
+import static org.mockito.AdditionalMatchers.or;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.AdditionalMatchers.aryEq;
-import static org.mockito.Matchers.same;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -50,13 +44,16 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.Driver;
 import java.sql.DriverManager;
+import java.sql.DriverPropertyInfo;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLFeatureNotSupportedException;
 import java.sql.Types;
 import java.util.List;
 import java.util.Properties;
+import java.util.logging.Logger;
 
 import javax.naming.Context;
 import javax.naming.InitialContext;
@@ -191,7 +188,8 @@ public class DatabaseTest {
     String columnType = "Integer";
     int columnSize = 15;
 
-    when( dbMetaData.getColumns( anyString(), anyString(), anyString(), anyString() ) ).thenReturn( rs );
+    when( dbMetaData.getColumns( anyString(), anyString(), or( anyString(), eq( null ) ),
+      or( anyString(), eq( null ) ) ) ).thenReturn( rs );
     when( rs.next() ).thenReturn( true ).thenReturn( false );
     when( rs.getString( "COLUMN_NAME" ) ).thenReturn( columnName );
     when( rs.getString( "SOURCE_DATA_TYPE" ) ).thenReturn( columnType );
@@ -250,7 +248,7 @@ public class DatabaseTest {
     when( ps.getMetaData() ).thenReturn( rsMetaData );
     Database db = new Database( log, meta );
     Connection conn = mock( Connection.class );
-    when( conn.prepareStatement( anyString() ) ).thenReturn( ps );
+    when( conn.prepareStatement( or( anyString(), eq( null ) ) ) ).thenReturn( ps );
 
     db.setConnection( conn );
     String[] name = new String[] { "a" };
@@ -274,9 +272,11 @@ public class DatabaseTest {
     when( rsMetaData.getColumnCount() ).thenReturn( 0 );
     when( ps.getMetaData() ).thenReturn( rsMetaData );
 
-    Database db = new Database( log, meta );
-    db.getLookup( ps );
-    verify( rsMetaData, times( 1 ) ).getColumnCount();
+    try ( Database db = new Database( log, meta ) ) {
+      db.setConnection( conn );
+      db.getLookup( ps );
+      verify( rsMetaData, times( 1 ) ).getColumnCount();
+    }
   }
 
   @Test
@@ -632,7 +632,9 @@ public class DatabaseTest {
 
   private Connection mockConnection( DatabaseMetaData dbMetaData ) throws SQLException {
     Connection conn = mock( Connection.class );
+    MockDriver.conn = conn;
     when( conn.getMetaData() ).thenReturn( dbMetaData );
+    when( conn.isValid( anyInt() ) ).thenReturn( true );
     return conn;
   }
 
@@ -657,6 +659,9 @@ public class DatabaseTest {
     when( ds.getConnection( anyString(), anyString() ) ).thenReturn( connection );
     DataSourceProviderInterface provider = mock( DataSourceProviderInterface.class );
     when( provider.getNamedDataSource( anyString(), any( DataSourceProviderInterface.DatasourceType.class ) ) )
+      .thenReturn( ds );
+    when( provider.getPooledDataSourceFromMeta( any( DatabaseMeta.class ),
+      any( DataSourceProviderInterface.DatasourceType.class ) ) )
       .thenReturn( ds );
 
     Database db = new Database( log, meta );
@@ -686,18 +691,18 @@ public class DatabaseTest {
 
   @Test
   public void testNormalConnect_WhenTheProviderDoesNotReturnDataSourceWithPool() throws Exception {
-    Driver driver = mock( Driver.class );
-    when( driver.acceptsURL( anyString() ) ).thenReturn( true );
-    when( driver.connect( anyString(), any( Properties.class ) ) ).thenReturn( conn );
+    Driver driver = new MockDriver();
     DriverManager.registerDriver( driver );
 
     when( meta.isUsingConnectionPool() ).thenReturn( true );
     when( meta.getDriverClass() ).thenReturn( driver.getClass().getName() );
-    when( meta.getURL( anyString() ) ).thenReturn( "mockUrl" );
+    when( meta.getURL( or( anyString(), eq( null ) ) ) ).thenReturn( "mockUrl" );
     when( meta.getInitialPoolSize() ).thenReturn( 1 );
     when( meta.getMaximumPoolSize() ).thenReturn( 1 );
 
     DataSourceProviderInterface provider = mock( DataSourceProviderInterface.class );
+    doThrow( new UnsupportedOperationException() ).when( provider )
+      .getPooledDataSourceFromMeta( meta, DatasourceType.POOLED );
     Database db = new Database( log, meta );
     final DataSourceProviderInterface existing = DataSourceProviderFactory.getDataSourceProviderInterface();
     try {
@@ -714,22 +719,23 @@ public class DatabaseTest {
 
   @Test
   public void testNormalConnectWhenDatasourceNeedsUpdate() throws Exception {
-    Driver driver = mock( Driver.class );
-    when( driver.acceptsURL( anyString() ) ).thenReturn( true );
-    when( driver.connect( anyString(), any( Properties.class ) ) ).thenReturn( conn );
+    Driver driver = new MockDriver();
     DriverManager.registerDriver( driver );
 
+    Properties prop = mock( Properties.class );
     when( meta.isUsingConnectionPool() ).thenReturn( true );
     when( meta.getDriverClass() ).thenReturn( driver.getClass().getName() );
     when( meta.getURL( anyString() ) ).thenReturn( "mockUrl" );
     when( meta.getInitialPoolSize() ).thenReturn( 1 );
     when( meta.getMaximumPoolSize() ).thenReturn( 1 );
     when( meta.isNeedUpdate() ).thenReturn( true );
+    when( meta.getAttributes() ).thenReturn( prop );
 
     DataSourceProviderInterface provider = mock( DataSourceProviderInterface.class );
     DataSource dataSource = mock( DataSource.class );
     Connection connection = mock( Connection.class );
-    when( provider.getNamedDataSource( any(), any() ) ).thenReturn( dataSource );
+    doThrow( new UnsupportedOperationException() ).when( provider )
+      .getPooledDataSourceFromMeta( meta, DatasourceType.POOLED );
     when( dataSource.getConnection() ).thenReturn( connection );
     Database db = new Database( log, meta );
     final DataSourceProviderInterface existing = DataSourceProviderFactory.getDataSourceProviderInterface();
@@ -748,9 +754,7 @@ public class DatabaseTest {
 
   @Test
   public void testNormalConnectWhenDatasourceDontNeedsUpdate() throws Exception {
-    Driver driver = mock( Driver.class );
-    when( driver.acceptsURL( anyString() ) ).thenReturn( true );
-    when( driver.connect( anyString(), any( Properties.class ) ) ).thenReturn( conn );
+    Driver driver = new MockDriver();
     DriverManager.registerDriver( driver );
 
     when( meta.isUsingConnectionPool() ).thenReturn( true );
@@ -761,6 +765,8 @@ public class DatabaseTest {
     when( meta.isNeedUpdate() ).thenReturn( false );
 
     DataSourceProviderInterface provider = mock( DataSourceProviderInterface.class );
+    doThrow( new UnsupportedOperationException() ).when( provider )
+      .getPooledDataSourceFromMeta( meta, DatasourceType.POOLED );
     Database db = new Database( log, meta );
     final DataSourceProviderInterface existing = DataSourceProviderFactory.getDataSourceProviderInterface();
     try {
@@ -789,7 +795,7 @@ public class DatabaseTest {
     fieldPstmt.set( db, ps );
     doThrow( new SQLException( "Test SQL exception" ) ).when( ps ).close();
 
-    db.disconnect();
+    db.close();
     verify( connection, times( 1 ) ).close();
   }
 
@@ -808,7 +814,7 @@ public class DatabaseTest {
     fieldPstmt.set( db, ps );
 
     doThrow( new SQLException( "Test SQL exception" ) ).when( conn ).commit();
-    db.disconnect();
+    db.close();
     verify( conn, times( 1 ) ).close();
   }
 
@@ -818,7 +824,7 @@ public class DatabaseTest {
     Database db = new Database( log, meta );
     db.setConnection( conn );
     db.setConnectionGroup( "1" );
-    db.disconnect();
+    db.close();
     verify( conn, never() ).close();
   }
 
@@ -827,12 +833,32 @@ public class DatabaseTest {
     when( rs.next() ).thenReturn( true, false );
     when( rs.getString( "TABLE_NAME" ) ).thenReturn( EXISTING_TABLE_NAME );
     when( dbMetaMock.getTables(
-      same( dbMetaDataMock ), anyString(), anyString(), any() ) ).thenReturn( rs );
+      same( dbMetaDataMock ), or( anyString(), eq( null ) ), or( anyString(), eq( null ) ), any() ) ).thenReturn( rs );
     Database db = new Database( log, dbMetaMock );
     db.setConnection( mockConnection( dbMetaDataMock ) );
 
     String[] tableNames = db.getTablenames();
     assertEquals( tableNames.length, 1 );
+  }
+
+  @Test
+  public void testGetViewsWithSpacesReturnsQuoted() throws Exception {
+    String viewNameWithSpaces = "View with spaces";
+    String quotedViewNameWithSpaces = "\"View with spaces\"";
+    when( dbMetaMock.supportsViews() ).thenReturn( true );
+    when( rs.next() ).thenReturn( true, false );
+    when( rs.getString( "TABLE_NAME" ) ).thenReturn( viewNameWithSpaces );
+    when( dbMetaMock.getTables(
+      same( dbMetaDataMock ), or( anyString(), eq( null ) ), or( anyString(), eq( null ) ), any() ) ).thenReturn( rs );
+    Database db = new Database( log, dbMetaMock );
+    db.setConnection( mockConnection( dbMetaDataMock ) );
+    when( dbMetaMock.getQuotedSchemaTableCombination( null, viewNameWithSpaces ) ).thenReturn(
+      quotedViewNameWithSpaces );
+
+    String[] viewNames = db.getViews();
+
+    assertEquals( 1, viewNames.length );
+    assertEquals( quotedViewNameWithSpaces, viewNames[ 0 ] );
   }
 
   @Test
@@ -956,5 +982,40 @@ public class DatabaseTest {
     verify( db, times( 1 ) ).getTableFieldsMetaByDbMeta( any(), any() );
   }
 
+  public static class MockDriver implements Driver {
+    public static Connection conn;
+
+    public MockDriver() {
+
+    }
+
+    @Override public Connection connect( String url, Properties info ) throws SQLException {
+      return conn;
+    }
+
+    @Override public boolean acceptsURL( String url ) throws SQLException {
+      return true;
+    }
+
+    @Override public DriverPropertyInfo[] getPropertyInfo( String url, Properties info ) throws SQLException {
+      return new DriverPropertyInfo[ 0 ];
+    }
+
+    @Override public int getMajorVersion() {
+      return 0;
+    }
+
+    @Override public int getMinorVersion() {
+      return 0;
+    }
+
+    @Override public boolean jdbcCompliant() {
+      return true;
+    }
+
+    @Override public Logger getParentLogger() throws SQLFeatureNotSupportedException {
+      return null;
+    }
+  }
 
 }

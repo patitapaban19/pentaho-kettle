@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.logging;
 
@@ -492,17 +484,16 @@ public abstract class BaseLogTable {
     this.connectionName = connectionName;
   }
 
-  @VisibleForTesting
   protected String getLogBuffer( VariableSpace space, String logChannelId, LogStatus status, String limit ) {
+    return getLogBuffer( space, logChannelId, status, limit, 0 );
+  }
+
+  @VisibleForTesting
+  protected String getLogBuffer( VariableSpace space, String logChannelId, LogStatus status, String limit, int logBufferFrom ) {
 
     LoggingBuffer loggingBuffer = KettleLogStore.getAppender();
-    // if job is starting, then remove all previous events from buffer with that job logChannelId.
-    // Prevents recursive job calls logging issue.
-    if ( status.getStatus().equalsIgnoreCase( String.valueOf( LogStatus.START ) ) ) {
-      loggingBuffer.removeChannelFromBuffer( logChannelId );
-    }
 
-    StringBuffer buffer = loggingBuffer.getBuffer( logChannelId, true );
+    StringBuffer buffer = loggingBuffer.getBuffer( logChannelId, true, logBufferFrom );
 
     if ( Utils.isEmpty( limit ) ) {
       String defaultLimit = space.getVariable( Const.KETTLE_LOG_SIZE_LIMIT, null );

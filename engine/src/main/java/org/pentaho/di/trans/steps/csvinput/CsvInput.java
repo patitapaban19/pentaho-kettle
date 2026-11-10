@@ -1,39 +1,31 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.csvinput;
 
+import java.io.BufferedInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.UnsupportedEncodingException;
-import java.io.BufferedInputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.io.ByteOrderMark;
 import org.apache.commons.io.input.BOMInputStream;
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.vfs2.FileObject;
 import org.apache.commons.vfs2.provider.local.LocalFile;
 import org.pentaho.di.core.Const;
@@ -88,7 +80,8 @@ public class CsvInput extends BaseStep implements StepInterface {
       first = false;
 
       data.outputRowMeta = new RowMeta();
-      meta.getFields( data.outputRowMeta, getStepname(), null, null, this, repository, metaStore );
+      meta.getFields( getTransMeta().getBowl(), data.outputRowMeta, getStepname(), null, null, this, repository,
+        metaStore );
 
       if ( data.filenames == null ) {
         // We're expecting the list of filenames from the previous step(s)...
@@ -199,7 +192,8 @@ public class CsvInput extends BaseStep implements StepInterface {
       // We'll use the same algorithm...
       //
       for ( String filename : data.filenames ) {
-        long size = KettleVFS.getFileObject( filename, getTransMeta() ).getContent().getSize();
+        long size = KettleVFS.getInstance( getTransMeta().getBowl() )
+          .getFileObject( filename, getTransMeta() ).getContent().getSize();
         data.fileSizes.add( size );
         data.totalFileSize += size;
       }
@@ -332,7 +326,8 @@ public class CsvInput extends BaseStep implements StepInterface {
       // Open the next one...
       //
       data.fieldsMapping = createFieldMapping( data.filenames[data.filenr], meta );
-      FileObject fileObject = KettleVFS.getFileObject( data.filenames[ data.filenr ], getTransMeta() );
+      FileObject fileObject = KettleVFS.getInstance( getTransMeta().getBowl() )
+        .getFileObject( data.filenames[ data.filenr ], getTransMeta() );
       if ( !( fileObject instanceof LocalFile ) ) {
         // We can only use NIO on local files at the moment, so that's what we limit ourselves to.
         //
@@ -456,7 +451,8 @@ public class CsvInput extends BaseStep implements StepInterface {
     String enclosure = environmentSubstitute( csvInputMeta.getEnclosure() );
     String realEncoding = environmentSubstitute( csvInputMeta.getEncoding() );
 
-    try ( FileObject fileObject = KettleVFS.getFileObject( fileName, getTransMeta() );
+    try ( FileObject fileObject = KettleVFS.getInstance( getTransMeta().getBowl() )
+            .getFileObject( fileName, getTransMeta() );
         BOMInputStream inputStream =
             new BOMInputStream( KettleVFS.getInputStream( fileObject ), ByteOrderMark.UTF_8, ByteOrderMark.UTF_16LE,
                 ByteOrderMark.UTF_16BE ) ) {

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.www;
 
@@ -28,12 +20,14 @@ import java.util.Enumeration;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.pentaho.di.core.Const;
-import org.pentaho.di.core.util.Utils;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.encryption.Encr;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.KettleLogStore;
@@ -42,6 +36,9 @@ import org.pentaho.di.core.logging.LoggingObjectType;
 import org.pentaho.di.core.logging.SimpleLoggingObject;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.plugins.RepositoryPluginType;
+import org.pentaho.di.core.util.Utils;
+import org.pentaho.di.core.variables.VariableSpace;
+import org.pentaho.di.core.variables.Variables;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.KettleAuthenticationException;
@@ -55,6 +52,7 @@ import org.pentaho.di.trans.TransAdapter;
 import org.pentaho.di.trans.TransConfiguration;
 import org.pentaho.di.trans.TransExecutionConfiguration;
 import org.pentaho.di.trans.TransMeta;
+import org.pentaho.di.www.exception.ExecutionNotAllowedException;
 
 public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginInterface {
 
@@ -166,8 +164,8 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
     &#x3a;&#x2f;home&#x2f;admin&#xd;&#xa;&#xd;&#xa; at
     org.pentaho.di.www.ExecuteTransServlet.loadTransformation&#x28;ExecuteTransServlet.java&#x3a;214&#x29;&#xd;&#xa;
     at org.pentaho.di.www.ExecuteTransServlet.doGet&#x28;ExecuteTransServlet.java&#x3a;104&#x29;&#xd;&#xa;
-    at javax.servlet.http.HttpServlet.service&#x28;HttpServlet.java&#x3a;707&#x29;&#xd;&#xa;
-    at javax.servlet.http.HttpServlet.service&#x28;HttpServlet.java&#x3a;820&#x29;&#xd;&#xa;
+    at jakarta.servlet.http.HttpServlet.service&#x28;HttpServlet.java&#x3a;707&#x29;&#xd;&#xa;
+    at jakarta.servlet.http.HttpServlet.service&#x28;HttpServlet.java&#x3a;820&#x29;&#xd;&#xa;
     at org.mortbay.jetty.servlet.ServletHolder.handle&#x28;ServletHolder.java&#x3a;511&#x29;&#xd;&#xa;
     at org.mortbay.jetty.servlet.ServletHandler.handle&#x28;ServletHandler.java&#x3a;390&#x29;&#xd;&#xa;
     at org.mortbay.jetty.servlet.SessionHandler.handle&#x28;SessionHandler.java&#x3a;182&#x29;&#xd;&#xa;
@@ -201,7 +199,7 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
     </tr>
     <tr>
       <td>400</td>
-      <td>When missing mandatory params repo and trans</td>
+      <td>When missing mandatory param trans</td>
     </tr>
     <tr>
       <td>401</td>
@@ -249,17 +247,20 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
 
     PrintWriter out = response.getWriter();
 
-    if ( repOption == null || transOption == null ) {
+    if ( transOption == null ) {
       response.setStatus( HttpServletResponse.SC_BAD_REQUEST );
       out.println( new WebResult( WebResult.STRING_ERROR, BaseMessages.getString(
-              PKG, "ExecuteTransServlet.Error.MissingMandatoryParameter", repOption == null ? REP : TRANS ) ) );
+              PKG, "ExecuteTransServlet.Error.MissingMandatoryParameter", TRANS ) ) );
       return;
     }
 
     try {
 
       final Repository repository = openRepository( repOption, userOption, passOption );
-      final TransMeta transMeta = loadTransformation( repository, transOption );
+      clearBowlCache( repository );
+
+      final TransMeta transMeta = loadTransformation( repository, transOption,
+        getPopulatedVariableSpaceFromRequest( request, new Variables() ) );
 
       // Set the servlet parameters as variables in the transformation
       //
@@ -303,7 +304,7 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
       getTransformationMap().addTransformation( transMeta.getName(), carteObjectId, trans, transConfiguration );
       trans.setContainerObjectId( carteObjectId );
 
-      if ( repository != null ) {
+      if ( repository != null && !Utils.isEmpty( repOption ) ) {
         // The repository connection is open: make sure we disconnect from the repository once we
         // are done with this transformation.
         //
@@ -328,16 +329,16 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
         if ( trans.isFinishedOrStopped() && trans.getErrors() > 0 ) {
           response.setStatus( HttpServletResponse.SC_INTERNAL_SERVER_ERROR );
           out.println( new WebResult( WebResult.STRING_ERROR, BaseMessages.getString(
-                  PKG, "ExecuteTransServlet.Error.ErrorExecutingTrans", logging ) ) );
-        } else {
-          out.println( new WebResult( WebResult.STRING_OK, BaseMessages.getString(
-                  PKG, "ExecuteTransServlet.Log.ExecuteTransFinished", logging ) ) );
+            PKG, "ExecuteTransServlet.Error.ErrorExecutingTrans", logging ) ) );
         }
         out.flush();
       } catch ( Exception executionException ) {
         String logging = KettleLogStore.getAppender().getBuffer( trans.getLogChannelId(), false ).toString();
         throw new KettleException( BaseMessages.getString( PKG, "ExecuteTransServlet.Error.ErrorExecutingTrans", logging ), executionException );
       }
+    } catch ( ExecutionNotAllowedException ex ) {
+      response.setStatus( HttpServletResponse.SC_BAD_REQUEST );
+      out.println( new WebResult( WebResult.STRING_ERROR, ex.getMessage() ) );
     } catch ( Exception ex ) {
       // When we get to this point KettleAuthenticationException has already been wrapped in an Execution Exception
       // and that in a KettleException
@@ -361,49 +362,72 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
     }
   }
 
-  private TransMeta loadTransformation( Repository repository, String trans ) throws KettleException {
-
-    if ( repository == null ) {
-
-      // Without a repository it's a filename --> file:///foo/bar/trans.ktr
-      //
-      TransMeta transMeta = new TransMeta( trans );
-      return transMeta;
-
-    } else {
-
-      // With a repository we need to load it from /foo/bar/Transformation
-      // We need to extract the folder name from the path in front of the name...
-      //
-      String directoryPath;
-      String name;
-      int lastSlash = trans.lastIndexOf( RepositoryDirectory.DIRECTORY_SEPARATOR );
-      if ( lastSlash < 0 ) {
-        directoryPath = "/";
-        name = trans;
-      } else {
-        directoryPath = trans.substring( 0, lastSlash );
-        name = trans.substring( lastSlash + 1 );
-      }
-      RepositoryDirectoryInterface directory =
-        repository.loadRepositoryDirectoryTree().findDirectory( directoryPath );
-      if ( directory == null ) {
-        throw new KettleException( "Unable to find directory path '" + directoryPath + "' in the repository" );
-      }
-
-      ObjectId transformationID = repository.getTransformationID( name, directory );
-      if ( transformationID == null ) {
-        throw new KettleException( "Unable to find transformation '" + name + "' in directory :" + directory );
-      }
-      TransMeta transMeta = repository.loadTransformation( transformationID, null );
-      return transMeta;
+  private TransMeta loadTransformation( Repository repository, String trans, VariableSpace parentVariableSpace ) throws KettleException {
+    // Scheme-based paths (file:/..., zip:/..., pvfs://...) are treated as filesystem/VFS sources.
+    // Local Windows paths like C:/... are not repository paths and should not be resolved through repository lookups.
+    if ( repository == null || SlaveServerConfig.looksLikeScheme( trans ) ) {
+      return loadTransformationFromPathOrUrl( repository, trans, parentVariableSpace );
     }
+    return loadTransformationFromRepository( repository, trans, parentVariableSpace );
   }
 
-  private Repository openRepository( String repositoryName, String user, String pass ) throws KettleException {
+  private TransMeta loadTransformationFromPathOrUrl( Repository repository, String trans, VariableSpace parentVariableSpace )
+    throws KettleException {
+    SlaveServerConfig serverConfig = getTransformationMap() != null ? getTransformationMap().getSlaveServerConfig() : null;
+    if ( serverConfig == null ) {
+      serverConfig = new SlaveServerConfig();
+    }
+    if ( !serverConfig.isExecuteUrlAllowed( trans ) ) {
+      throw new ExecutionNotAllowedException( "Execution is not allowed for URL protocol in transformation path: " + trans );
+    }
+
+    // Without a repository it's a filename --> file:///foo/bar/trans.ktr
+    //
+    // Use the repository bowl that we cleared above if present. 
+    Bowl bowl = repository != null ? repository.getBowl() : DefaultBowl.getInstance();
+    return new TransMeta( bowl, trans, parentVariableSpace );
+  }
+
+  private TransMeta loadTransformationFromRepository( Repository repository, String trans, VariableSpace parentVariableSpace )
+    throws KettleException {
+    String directoryPath = getDirectoryPath( trans );
+    String name = getRepositoryObjectName( trans );
+
+    RepositoryDirectoryInterface directory =
+      repository.loadRepositoryDirectoryTree().findDirectory( directoryPath );
+    if ( directory == null ) {
+      throw new KettleException( "Unable to find directory path '" + directoryPath + "' in the repository" );
+    }
+
+    ObjectId transformationID = repository.getTransformationID( name, directory );
+    if ( transformationID == null ) {
+      throw new KettleException( "Unable to find transformation '" + name + "' in directory :" + directory );
+    }
+    // TODO BACKLOG-44138 need to pass parent variablespace
+    return repository.loadTransformation( transformationID, null, parentVariableSpace );
+  }
+
+  private String getDirectoryPath( String path ) {
+    int lastSlash = path.lastIndexOf( RepositoryDirectory.DIRECTORY_SEPARATOR );
+    if ( lastSlash < 0 ) {
+      return "/";
+    }
+    return path.substring( 0, lastSlash );
+  }
+
+  private String getRepositoryObjectName( String path ) {
+    int lastSlash = path.lastIndexOf( RepositoryDirectory.DIRECTORY_SEPARATOR );
+    if ( lastSlash < 0 ) {
+      return path;
+    }
+    return path.substring( lastSlash + 1 );
+  }
+
+  @VisibleForTesting
+  Repository openRepository( String repositoryName, String user, String pass ) throws KettleException {
 
     if ( Utils.isEmpty( repositoryName ) ) {
-      return null;
+      return getRepositoryFromLocator();
     }
 
     RepositoriesMeta repositoriesMeta = new RepositoriesMeta();
@@ -436,5 +460,4 @@ public class ExecuteTransServlet extends BaseHttpServlet implements CartePluginI
   public String getContextPath() {
     return CONTEXT_PATH;
   }
-
 }

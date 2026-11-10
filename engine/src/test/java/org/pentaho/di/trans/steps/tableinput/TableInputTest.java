@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.trans.steps.tableinput;
 
@@ -34,24 +26,40 @@ import org.pentaho.di.trans.step.StepPartitioningMeta;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doReturn;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockConstruction;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
-import static org.powermock.api.mockito.PowerMockito.spy;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 
 public class TableInputTest {
 
   TableInputMeta mockStepMetaInterface;
   TableInputData mockStepDataInterface;
   TableInput mockTableInput;
+  Map<String, String> queryParams;
+  String connection;
+  String schema;
+  String table;
 
   @Before
   public void setUp() {
@@ -69,6 +77,15 @@ public class TableInputTest {
     mockStepDataInterface = mock( TableInputData.class, withSettings().extraInterfaces( StepMetaInterface.class ) );
     mockStepDataInterface.db = mock( Database.class );
     mockTableInput = spy( new TableInput( mockStepMeta, mockStepDataInterface, 1, mockTransMeta, mockTrans ) );
+
+    connection = "Hypersonic";
+    schema = "sampleSchema";
+    table = "sampleTable";
+
+    queryParams = new HashMap<>();
+    queryParams.put( "connection", connection );
+    queryParams.put( "schema", schema );
+    queryParams.put( "table", table );
   }
 
   @Test

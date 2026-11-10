@@ -1,69 +1,55 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.trans.steps.fileinput.text;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.swt.widgets.Shell;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.KettleClientEnvironment;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.fileinput.FileInputList;
 import org.pentaho.di.core.logging.LoggingObjectType;
-import org.pentaho.di.core.row.RowMetaInterface;
 import org.pentaho.di.core.row.ValueMetaInterface;
 import org.pentaho.di.core.row.value.ValueMetaFactory;
 import org.pentaho.di.core.variables.VariableSpace;
-import org.pentaho.di.repository.Repository;
 import org.pentaho.di.trans.TransMeta;
-import org.pentaho.di.trans.step.StepMeta;
 import org.pentaho.di.trans.steps.file.BaseFileErrorHandling;
 import org.pentaho.di.trans.steps.file.BaseFileField;
 import org.pentaho.di.trans.steps.file.BaseFileInputAdditionalField;
 import org.pentaho.di.trans.steps.file.BaseFileInputFiles;
 import org.pentaho.di.trans.steps.fileinput.text.TextFileInputMeta;
-import org.pentaho.metastore.api.IMetaStore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
-import static org.powermock.api.mockito.PowerMockito.mockStatic;
+import static org.mockito.Mockito.mockStatic;
 import static org.powermock.reflect.Whitebox.setInternalState;
+import static org.mockito.ArgumentMatchers.any;
 
-@RunWith( PowerMockRunner.class )
-@PrepareForTest( FileInputList.class )
 public class TextFileInputTextCSVImportProgressDialogTest {
 
   private TextFileCSVImportProgressDialog textFileCSVImportProgressDialog;
@@ -76,19 +62,26 @@ public class TextFileInputTextCSVImportProgressDialogTest {
   private BaseFileInputFiles baseFileInputFiles;
   private BaseFileErrorHandling baseFileErrorHandling;
   private BaseFileInputAdditionalField baseFileInputAdditionalField;
+  private static MockedStatic<FileInputList> fileInputList;
 
   @Before
   public void setup() {
-    mockStatic( FileInputList.class );
+    fileInputList = mockStatic( FileInputList.class );
 
     shell = mock( Shell.class );
     meta = mock( TextFileInputMeta.class );
     transMeta = mock( TransMeta.class );
+    when( transMeta.getBowl() ).thenReturn( DefaultBowl.getInstance() );
     monitor = mock( IProgressMonitor.class );
     content = mock( TextFileInputMeta.Content.class );
     baseFileInputFiles =  mock( BaseFileInputFiles.class );
     baseFileErrorHandling = mock( BaseFileErrorHandling.class );
     baseFileInputAdditionalField = mock( BaseFileInputAdditionalField.class );
+  }
+
+  @After
+  public void cleanUp() {
+    fileInputList.close();
   }
 
   @BeforeClass
@@ -98,7 +91,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileDOSFormatTestWithNoEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\r\n"
       + "レコード名1,1.7976E308,true,9999/12/31 23:59:59.999,\r\n"
       + "\"あa1\",123456789,false,2016/1/5 12:00:00.000\r\n";
@@ -108,7 +101,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileDOSFormatTestWithEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\r\n"
       + "\"レコ\r\n"
       + "ード名1\",1.7976E308,true,9999/12/31 23:59:59.999,\r\n"
@@ -120,7 +113,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileUnixFormatTestWithNoEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\n"
       + "レコード名1,1.7976E308,true,9999/12/31 23:59:59.999,\n"
       + "\"あa1\",123456789,false,2016/1/5 12:00:00.000\n";
@@ -130,7 +123,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileUnixFormatTestWithEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\n"
       + "\"レコ\n"
       + "ード名1\",1.7976E308,true,9999/12/31 23:59:59.999,\n"
@@ -142,7 +135,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileMixFormatTestWithNoEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\n"
       + "レコード名1,1.7976E308,true,9999/12/31 23:59:59.999,\r\n"
       + "\"あa1\",123456789,false,2016/1/5 12:00:00.000\r\n";
@@ -152,7 +145,7 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   @Test
   public void fileMixFormatTestWithEnclosures() throws Exception {
-    BaseFileField[] baseFileFields = BaseFileFields( "String", "Number", "Boolean", "Date" );
+    BaseFileField[] baseFileFields = BaseFileFields( "String", "BigNumber", "Boolean", "Date" );
     String fileContent = "String, int, boolean, date\r\n"
       + "\"レコ\n"
       + "ード名1\",1.7976E308,true,9999/12/31 23:59:59.999,\n"
@@ -164,12 +157,12 @@ public class TextFileInputTextCSVImportProgressDialogTest {
 
   private void fileContentTest( String fileContent, BaseFileField[] baseFileFields, int fileFormat ) throws Exception {
     initiateVariables( fileContent, baseFileFields, fileFormat );
-    String result = textFileCSVImportProgressDialog.doScan( monitor );
+    textFileCSVImportProgressDialog.doScan( monitor );
 
-    assertEquals( ValueMetaFactory.getValueMetaName( meta.getInputFields()[0].getType() ), baseFileFields[0].getName() );
-    assertEquals( ValueMetaFactory.getValueMetaName( meta.getInputFields()[1].getType() ), baseFileFields[1].getName() );
-    assertEquals( ValueMetaFactory.getValueMetaName( meta.getInputFields()[2].getType() ), baseFileFields[2].getName() );
-    assertEquals( ValueMetaFactory.getValueMetaName( meta.getInputFields()[3].getType() ), baseFileFields[3].getName() );
+    assertEquals( baseFileFields[0].getName(), ValueMetaFactory.getValueMetaName( meta.getInputFields()[0].getType() ) );
+    assertEquals( baseFileFields[1].getName(), ValueMetaFactory.getValueMetaName( meta.getInputFields()[1].getType() ) );
+    assertEquals( baseFileFields[2].getName(), ValueMetaFactory.getValueMetaName( meta.getInputFields()[2].getType() ) );
+    assertEquals( baseFileFields[3].getName(), ValueMetaFactory.getValueMetaName( meta.getInputFields()[3].getType() ) );
   }
 
   private void initiateVariables( String fileContent, BaseFileField[] baseFileFields, int fileFormat ) throws Exception {
@@ -185,13 +178,12 @@ public class TextFileInputTextCSVImportProgressDialogTest {
     setInternalState( baseFileInputFiles, "excludeFileMask", new String[]{} );
     setInternalState( baseFileInputFiles, "fileRequired", new String[]{} );
     when( baseFileInputFiles.includeSubFolderBoolean() ).thenReturn( new boolean[] {} );
-    when( FileInputList.createFilePathList( any( VariableSpace.class ),
+    when( FileInputList.createFilePathList( any( Bowl.class), any( VariableSpace.class ),
       any( String[].class ), any( String[].class ), any( String[].class ), any( String[].class ),
       any( boolean[].class ) ) ).thenReturn( new String[]{""} );
     //meta
     when( meta.getInputFields() ).thenReturn( baseFileFields );
-    doCallRealMethod().when( meta ).getFields( any( RowMetaInterface.class ), anyString(), any( RowMetaInterface[].class ),
-      any( StepMeta.class ), any( VariableSpace.class ), any( Repository.class ), any( IMetaStore.class ) );
+    doCallRealMethod().when( meta ).getFields( any(), any(), any(), any(), any(), any(), any(), any() );
     setInternalState( meta, "inputFields",  baseFileFields );
     setInternalState( meta, "content",  content );
     when( meta.clone() ).thenReturn( meta );

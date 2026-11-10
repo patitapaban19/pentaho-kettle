@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.base;
 
@@ -32,25 +24,30 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.bowl.DefaultBowl;
 import org.pentaho.di.core.Const;
 import org.pentaho.di.core.Result;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.plugins.RepositoryPluginType;
+import org.pentaho.di.core.service.PluginServiceLoader;
 import org.pentaho.di.core.util.Utils;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.metastore.MetaStoreConst;
+import org.pentaho.di.pan.CommandExecutorResult;
+import org.pentaho.di.pan.CommandLineOptionProvider;
 import org.pentaho.di.repository.RepositoriesMeta;
 import org.pentaho.di.repository.Repository;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
 import org.pentaho.di.repository.RepositoryMeta;
 import org.pentaho.di.repository.RepositoryOperation;
-import org.pentaho.metastore.api.exceptions.MetaStoreException;
-import org.pentaho.metastore.stores.delegate.DelegatingMetaStore;
 import org.pentaho.di.version.BuildVersion;
+import org.pentaho.metastore.api.IMetaStore;
 
 public abstract class AbstractBaseCommandExecutor {
 
@@ -60,20 +57,14 @@ public abstract class AbstractBaseCommandExecutor {
 
   private LogChannelInterface log;
   private Class<?> pkgClazz;
-  DelegatingMetaStore metaStore;
+  IMetaStore metaStore = MetaStoreConst.getDefaultMetastore();
+  private Bowl bowl = DefaultBowl.getInstance();
 
   private Result result = new Result();
 
   protected Result exitWithStatus( final int exitStatus ) {
     getResult().setExitStatus( exitStatus );
     return getResult();
-  }
-
-  public DelegatingMetaStore createDefaultMetastore() throws MetaStoreException {
-    DelegatingMetaStore metaStore = new DelegatingMetaStore();
-    metaStore.addMetaStore( MetaStoreConst.openLocalPentahoMetaStore() );
-    metaStore.setActiveMetaStoreName( metaStore.getName() );
-    return metaStore;
   }
 
   protected void logDebug( final String messageKey ) {
@@ -286,6 +277,28 @@ public abstract class AbstractBaseCommandExecutor {
     return file;
   }
 
+  /**
+   * Pass the plugin parameters to the CommandLineOptionProvider for validation and setting the plugin context.
+   * @param log LogChannelInterface for logging
+   * @param params Params containing the plugin parameters
+   * @param repository Repository object when connected
+   * @return CommandExecutorResult contains the result of the of validation.
+   */
+  protected static CommandExecutorResult validateAndSetPluginContext( LogChannelInterface log, Params params, Repository repository ) throws KettleException {
+    CommandExecutorResult result = null;
+    Map<String, String> paramMap = params.getPluginParams();
+
+    for ( CommandLineOptionProvider provider : PluginServiceLoader.loadServices( CommandLineOptionProvider.class ) ) {
+      result = provider.handleParameter( log, paramMap, repository );
+      if ( result.getCode() != 0 ) {
+        log.logError( result.getDescription() );
+        break; // if result is NOT SUCCESS, break out of the loop
+      }
+    }
+
+    return result;
+  }
+
   public LogChannelInterface getLog() {
     return log;
   }
@@ -302,11 +315,11 @@ public abstract class AbstractBaseCommandExecutor {
     this.pkgClazz = pkgClazz;
   }
 
-  public DelegatingMetaStore getMetaStore() {
+  public IMetaStore getMetaStore() {
     return metaStore;
   }
 
-  public void setMetaStore( DelegatingMetaStore metaStore ) {
+  public void setMetaStore( IMetaStore metaStore ) {
     this.metaStore = metaStore;
   }
 
@@ -324,5 +337,13 @@ public abstract class AbstractBaseCommandExecutor {
 
   public void setResult( Result result ) {
     this.result = result;
+  }
+
+  public Bowl getBowl() {
+    return bowl;
+  }
+
+  public void setBowl( Bowl bowl ) {
+    this.bowl = Objects.requireNonNull( bowl );
   }
 }

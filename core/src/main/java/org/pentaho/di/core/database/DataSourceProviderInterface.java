@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.database;
 
@@ -50,6 +42,17 @@ public interface DataSourceProviderInterface {
    */
   DataSource getNamedDataSource( String datasourceName, DatasourceType type ) throws DataSourceNamingException;
 
+  /**
+   * Returns the specified data source of respecting its <code>type</code>
+   *
+   * @param dbMeta  definition of the datasource provided via DatabaseMeta
+   * @param type    data source's type
+   * @return named data source
+   * @throws DataSourceNamingException
+   */
+  default DataSource getPooledDataSourceFromMeta( DatabaseMeta dbMeta, DatasourceType type ) throws DataSourceNamingException {
+    throw new UnsupportedOperationException( "getNamedDataSourceFromMeta is not supported" );
+  }
 
   /**
    * Invalidate the named data source of respecting its <code>type</code>

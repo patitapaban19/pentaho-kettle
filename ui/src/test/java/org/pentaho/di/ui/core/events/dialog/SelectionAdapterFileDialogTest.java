@@ -1,41 +1,45 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.ui.core.events.dialog;
 
 import org.apache.commons.vfs2.FileObject;
 import org.apache.commons.vfs2.FileSystemException;
 import org.eclipse.swt.events.SelectionEvent;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.pentaho.di.base.AbstractMeta;
+import org.pentaho.di.core.bowl.DefaultBowl;
+import org.pentaho.di.core.Const;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.logging.LogChannelInterface;
 import org.pentaho.di.repository.RepositoryDirectoryInterface;
 import org.pentaho.di.repository.RepositoryObject;
 import org.pentaho.di.ui.core.FileDialogOperation;
 import org.pentaho.di.ui.core.events.dialog.extension.ExtensionPointWrapper;
-import org.pentaho.di.ui.core.events.dialog.FilterType;
 
-import static org.junit.Assert.*;
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -43,6 +47,8 @@ import static org.mockito.Mockito.when;
 public class SelectionAdapterFileDialogTest {
 
   SelectionAdapterFileDialog testInstance;
+  @Rule
+  public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Before
   public void setup() {
@@ -58,7 +64,7 @@ public class SelectionAdapterFileDialogTest {
     AbstractMeta meta = mock( AbstractMeta.class );
     RepositoryUtility repositoryUtility = mock( RepositoryUtility.class );
     ExtensionPointWrapper extensionPointWrapper = mock( ExtensionPointWrapper.class );
-    SelectionAdapterOptions options = new SelectionAdapterOptions( SelectionOperation.FILE );
+    SelectionAdapterOptions options = new SelectionAdapterOptions( DefaultBowl.getInstance(), SelectionOperation.FILE );
     SelectionEvent event = mock( SelectionEvent.class );
 
     String testPath = "/home/devuser/some/path";
@@ -82,23 +88,48 @@ public class SelectionAdapterFileDialogTest {
     assertNotNull( testInstance.resolveFile( abstractMeta, unresolvedPath ) );
   }
 
+  @Test
+  public void testApplyRelativePathEnvVar() throws IOException {
+    //SETUP
+    LogChannelInterface log = mock( LogChannelInterface.class );
+    StringBuilder textVar = new StringBuilder();
+    AbstractMeta meta = mock( AbstractMeta.class );
+    RepositoryUtility repositoryUtility = mock( RepositoryUtility.class );
+    ExtensionPointWrapper extensionPointWrapper = mock( ExtensionPointWrapper.class );
+    SelectionAdapterOptions options = new SelectionAdapterOptions( DefaultBowl.getInstance(), SelectionOperation.FILE );
+    File testFile = temporaryFolder.newFile( "testFileName" );
+
+    String testPath = testFile.getPath();
+    when( meta.environmentSubstitute( testPath ) ).thenReturn( testPath );
+
+    SelectionAdapterFileDialog testInstance1 = createTestInstance( log, textVar, meta, options, repositoryUtility,
+      extensionPointWrapper );
+    testInstance1.setText( testPath );
+    String pathWithCurrentDirVar = testInstance1.applyRelativePathEnvVar( testPath );
+    assertEquals( testPath, pathWithCurrentDirVar );
+
+    when( meta.getFilename() ).thenReturn( testPath );
+    pathWithCurrentDirVar =  testInstance1.applyRelativePathEnvVar( testPath );
+    assertEquals( "${" + Const.INTERNAL_VARIABLE_ENTRY_CURRENT_DIRECTORY + "}/testFileName", pathWithCurrentDirVar );
+  }
+
 
   @Test
   public void testCreateFileDialogOperation() {
     // TEST : SELECT file
-    FileDialogOperation fdo1 = testInstance.createFileDialogOperation( SelectionOperation.FILE );
+    FileDialogOperation fdo1 = testInstance.createFileDialogOperation( DefaultBowl.getInstance(), SelectionOperation.FILE );
     assertNotNull( fdo1 );
     assertEquals( FileDialogOperation.SELECT_FILE, fdo1.getCommand() );
     assertEquals( FileDialogOperation.ORIGIN_SPOON, fdo1.getOrigin() );
 
     // TEST : SELECT folder
-    FileDialogOperation fdo2 = testInstance.createFileDialogOperation( SelectionOperation.FOLDER );
+    FileDialogOperation fdo2 = testInstance.createFileDialogOperation( DefaultBowl.getInstance(), SelectionOperation.FOLDER );
     assertNotNull( fdo2 );
     assertEquals( FileDialogOperation.SELECT_FOLDER, fdo2.getCommand() );
     assertEquals( FileDialogOperation.ORIGIN_SPOON, fdo2.getOrigin() );
 
     // TEST : SELECT folder
-    FileDialogOperation fdo3 = testInstance.createFileDialogOperation( SelectionOperation.FILE_OR_FOLDER );
+    FileDialogOperation fdo3 = testInstance.createFileDialogOperation( DefaultBowl.getInstance(), SelectionOperation.FILE_OR_FOLDER );
     assertNotNull( fdo3 );
     assertEquals( FileDialogOperation.SELECT_FILE_FOLDER, fdo3.getCommand() );
     assertEquals( FileDialogOperation.ORIGIN_SPOON, fdo3.getOrigin() );
@@ -273,7 +304,7 @@ public class SelectionAdapterFileDialogTest {
     StringBuilder textVar = new StringBuilder();
     AbstractMeta meta = mock( AbstractMeta.class );
     ExtensionPointWrapper extensionPointWrapper = mock( ExtensionPointWrapper.class );
-    SelectionAdapterOptions options = new SelectionAdapterOptions( SelectionOperation.FILE );
+    SelectionAdapterOptions options = new SelectionAdapterOptions( DefaultBowl.getInstance(), SelectionOperation.FILE );
 
     // True case:
     RepositoryUtility repositoryUtilityTrue = mock( RepositoryUtility.class );
@@ -294,8 +325,35 @@ public class SelectionAdapterFileDialogTest {
     assertFalse( testInstance2.isConnectedToRepository() );
   }
 
+  @Test
+  public void testSetProvider() throws Exception {
+
+    // TEST PVFS , ProviderFilter null
+    String pvfsPath = "pvfs://someConnectionName/dirA/dir2/dirC/randomFile.txt";
+    URI uriPvfs = new URI( pvfsPath );
+    FileObject foPvfs = mock( FileObject.class );
+    when( foPvfs.getURI() ).thenReturn( uriPvfs );
+
+    FileDialogOperation fileDialogOperationPvfs_ProviderFilterNull = createFileDialogOperation();
+    fileDialogOperationPvfs_ProviderFilterNull.setProviderFilter( null );
+
+    testInstance.setProvider( fileDialogOperationPvfs_ProviderFilterNull, foPvfs );
+
+    assertEquals( ProviderFilterType.VFS.toString(), fileDialogOperationPvfs_ProviderFilterNull.getProvider() );
+
+
+    // TEST PVFS , ProviderFilter Default
+    FileDialogOperation fileDialogOperationPvfs_ProviderFilterDefault = createFileDialogOperation();
+    fileDialogOperationPvfs_ProviderFilterDefault.setProviderFilter( ProviderFilterType.DEFAULT.toString() );
+
+    testInstance.setProvider( fileDialogOperationPvfs_ProviderFilterDefault, foPvfs );
+
+    assertEquals( ProviderFilterType.VFS.toString(), fileDialogOperationPvfs_ProviderFilterDefault.getProvider() );
+
+  }
+
   protected FileDialogOperation createFileDialogOperation() {
-    return new FileDialogOperation( FileDialogOperation.SELECT_FILE, FileDialogOperation.ORIGIN_SPOON );
+    return new FileDialogOperation( DefaultBowl.getInstance(), FileDialogOperation.SELECT_FILE, FileDialogOperation.ORIGIN_SPOON );
   }
 
   protected SelectionAdapterFileDialog createTestInstance() {
@@ -304,7 +362,7 @@ public class SelectionAdapterFileDialogTest {
     AbstractMeta meta = mock( AbstractMeta.class );
     RepositoryUtility repositoryUtility = mock( RepositoryUtility.class );
     ExtensionPointWrapper extensionPointWrapper = mock( ExtensionPointWrapper.class );
-    SelectionAdapterOptions options = new SelectionAdapterOptions( SelectionOperation.FILE, new String[]{}, "" );
+    SelectionAdapterOptions options = new SelectionAdapterOptions( DefaultBowl.getInstance(), SelectionOperation.FILE, new String[]{}, "" );
 
     return createTestInstance( log, textWidget, meta, options, repositoryUtility, extensionPointWrapper );
   }

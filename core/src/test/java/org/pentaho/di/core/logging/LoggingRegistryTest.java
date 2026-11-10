@@ -1,31 +1,22 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.logging;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.reflect.Whitebox;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,14 +30,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-@RunWith( PowerMockRunner.class )
+@RunWith( MockitoJUnitRunner.class )
 public class LoggingRegistryTest {
   public static final String LOG_CHANEL_ID_PARENT = "parent-chanel-id";
   public static final String LOG_CHANEL_ID_CHILD = "child-chanel-id";
@@ -75,7 +66,6 @@ public class LoggingRegistryTest {
     String id = "1";
 
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
-
     LogChannelFileWriterBuffer buffer = new LogChannelFileWriterBuffer( id );
     loggingRegistry.registerLogChannelFileWriterBuffer( buffer );
 
@@ -87,7 +77,6 @@ public class LoggingRegistryTest {
     String id = "1";
 
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
-
     LogChannelFileWriterBuffer buffer = new LogChannelFileWriterBuffer( id );
     loggingRegistry.registerLogChannelFileWriterBuffer( buffer );
 
@@ -99,7 +88,6 @@ public class LoggingRegistryTest {
     String id = "1";
 
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
-
     LogChannelFileWriterBuffer buffer = new LogChannelFileWriterBuffer( id );
     loggingRegistry.registerLogChannelFileWriterBuffer( buffer );
 
@@ -111,18 +99,17 @@ public class LoggingRegistryTest {
   @Test
   public void getLogChannelFileWriterBufferTest() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
-
     Map<String, LogChannelFileWriterBuffer> fileWriterBuffers = getDummyFileWriterBuffers();
 
-    Whitebox.setInternalState( loggingRegistry, "fileWriterBuffers", fileWriterBuffers );
-    Whitebox.setInternalState( loggingRegistry, "childrenMap", getDummyChildrenMap() );
+    loggingRegistry.setFileWriterBuffers( fileWriterBuffers );
+    loggingRegistry.setChildrenMap( getDummyChildrenMap() );
 
     assertEquals( "dc8c1482-30ab-4d0f-b9f6-e4c32a627bf0", loggingRegistry.getLogChannelFileWriterBuffer( "dcffc35f-c74f-4e37-b463-97313998ea20" ).getLogChannelId() );
 
     //Switch the order of the writers
     fileWriterBuffers.remove( "7c1526bc-789e-4f5a-8d68-1f9c39488ceb" );
     fileWriterBuffers.put( "7c1526bc-789e-4f5a-8d68-1f9c39488ceb", new LogChannelFileWriterBuffer( "7c1526bc-789e-4f5a-8d68-1f9c39488ceb" ) );
-    Whitebox.setInternalState( loggingRegistry, "fileWriterBuffers", fileWriterBuffers );
+    loggingRegistry.setFileWriterBuffers( fileWriterBuffers );
 
     //regardless of the order of the writers the correct the same should be selected
     assertEquals( "dc8c1482-30ab-4d0f-b9f6-e4c32a627bf0", loggingRegistry.getLogChannelFileWriterBuffer( "dcffc35f-c74f-4e37-b463-97313998ea20" ).getLogChannelId() );
@@ -131,13 +118,12 @@ public class LoggingRegistryTest {
   @Test
   public void getLogChannelFileWriterBufferOnlyOnePossibilityTest() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
-
     Map<String, LogChannelFileWriterBuffer> fileWriterBuffers = getDummyFileWriterBuffers();
 
     fileWriterBuffers.remove( "7c1526bc-789e-4f5a-8d68-1f9c39488ceb" );
 
-    Whitebox.setInternalState( loggingRegistry, "fileWriterBuffers", fileWriterBuffers );
-    Whitebox.setInternalState( loggingRegistry, "childrenMap", getDummyChildrenMap() );
+    loggingRegistry.setFileWriterBuffers( fileWriterBuffers );
+    loggingRegistry.setChildrenMap( getDummyChildrenMap() );
 
     assertEquals( "dc8c1482-30ab-4d0f-b9f6-e4c32a627bf0", loggingRegistry.getLogChannelFileWriterBuffer( "dcffc35f-c74f-4e37-b463-97313998ea20" ).getLogChannelId() );
   }
@@ -150,8 +136,8 @@ public class LoggingRegistryTest {
 
     fileWriterBuffers.clear();
 
-    Whitebox.setInternalState( loggingRegistry, "fileWriterBuffers", fileWriterBuffers );
-    Whitebox.setInternalState( loggingRegistry, "childrenMap", getDummyChildrenMap() );
+    loggingRegistry.setFileWriterBuffers( fileWriterBuffers );
+    loggingRegistry.setChildrenMap( getDummyChildrenMap() );
 
     assertNull( loggingRegistry.getLogChannelFileWriterBuffer( "dcffc35f-c74f-4e37-b463-97313998ea20" ) );
   }
@@ -163,6 +149,7 @@ public class LoggingRegistryTest {
   public void testPurgeTimerReset()  {
 
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.schedulePurgeTimer();
     loggingRegistry.setMaxSize( 10 );
 
     int beforeReset = loggingRegistry.getTimerHashCode();
@@ -181,6 +168,8 @@ public class LoggingRegistryTest {
   @Test
   public void testSimplePurge() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.updateFromProperties();
+    loggingRegistry.schedulePurgeTimer();
     loggingRegistry.setMaxSize( 10 );
     loggingRegistry.reset();
 
@@ -202,6 +191,8 @@ public class LoggingRegistryTest {
   @Test
   public void testPurgeErrorCase() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.updateFromProperties();
+    loggingRegistry.schedulePurgeTimer();
     loggingRegistry.setMaxSize( 10 );
     loggingRegistry.reset();
 
@@ -233,6 +224,8 @@ public class LoggingRegistryTest {
   @Test
   public void testDump() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.schedulePurgeTimer();
+    loggingRegistry.updateFromProperties();
     loggingRegistry.reset();
 
     LoggingObjectInterface obj = new SimpleLoggingObject( UUID.randomUUID().toString(),  LoggingObjectType.JOB, null );
@@ -247,6 +240,8 @@ public class LoggingRegistryTest {
   @Test
   public void testModificationTime() {
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.schedulePurgeTimer();
+    loggingRegistry.updateFromProperties();
     loggingRegistry.reset();
 
     LoggingObjectInterface obj = new SimpleLoggingObject( UUID.randomUUID().toString(),  LoggingObjectType.JOB, null );
@@ -263,6 +258,8 @@ public class LoggingRegistryTest {
   public void testFindWithComplexRegistry() {
 
     LoggingRegistry loggingRegistry = LoggingRegistry.getInstance();
+    loggingRegistry.updateFromProperties();
+    loggingRegistry.schedulePurgeTimer();
     loggingRegistry.setPurgeTimeout( 60000 ); // ensure normal purge time out.
     loggingRegistry.reset();
 

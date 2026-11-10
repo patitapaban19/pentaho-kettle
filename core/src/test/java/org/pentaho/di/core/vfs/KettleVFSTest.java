@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.vfs;
 
@@ -46,12 +38,24 @@ public class KettleVFSTest {
   private static final String PROVIDER_PATTERN_SCHEME = "^[\\w\\d]+://(.*)";
 
   @Test
-  public void testStartsWithScheme() {
-    String fileName = "zip:file:///SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr";
-    assertTrue( KettleVFS.startsWithScheme( fileName ) );
+  public void testGetSchemeAndStartsWithScheme() {
+    assertEquals( "zip", KettleVFS.getScheme( "zip:file:///SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr" ) );
+    assertEquals( "file", KettleVFS.getScheme( "file:/tmp/test.ktr" ) );
+    assertEquals( "file", KettleVFS.getScheme( "file:relative/path/test.ktr" ) );
+    assertEquals( "file", KettleVFS.getScheme( "file://tmp/test.ktr" ) );
+    assertEquals( "zip", KettleVFS.getScheme( "zip:file:///SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr" ) );
+    assertEquals( "pvfs", KettleVFS.getScheme( "pvfs://repo/dir/test.ktr" ) );
+    assertNull( KettleVFS.getScheme( "C:/tmp/test.ktr" ) );
+    assertNull( KettleVFS.getScheme( "relative/path/test.ktr" ) );
+    assertNull( KettleVFS.getScheme( "" ) );
+    assertNull( KettleVFS.getScheme( null ) );
+    assertNull( KettleVFS.getScheme( "notaschema://one/two/three.ktr" ) );
 
-    fileName = "SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr";
-    assertFalse( KettleVFS.startsWithScheme( fileName ) );
+    assertTrue( KettleVFS.startsWithScheme( "zip:file:///SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr" ) );
+    assertTrue( KettleVFS.startsWithScheme( "file:/tmp/test.ktr" ) );
+    assertFalse( KettleVFS.startsWithScheme( "SavedLinkedres.zip!Calculate median and percentiles using the group by steps.ktr" ) );
+    assertFalse( KettleVFS.startsWithScheme( "C:/tmp/test.ktr" ) );
+    assertFalse( KettleVFS.startsWithScheme( "notaschema://one/two/three.ktr" ) );
   }
 
   @Test
@@ -149,6 +153,60 @@ public class KettleVFSTest {
     boolean testVfsFilenameWithScheme = KettleVFS.hasSchemePattern( vfsFilenameWithScheme, PROVIDER_PATTERN_SCHEME );
     assertTrue( testVfsFilenameWithScheme );
 
+  }
+
+  @Test
+  public void testNormalizeFilePath_NullOrEmpty() {
+    assertNull( KettleVFS.normalizeFilePath( null ) );
+    assertEquals( "", KettleVFS.normalizeFilePath( "" ) );
+    assertEquals( "   ", KettleVFS.normalizeFilePath( "   " ) );
+  }
+
+  @Test
+  public void testNormalizeFilePath_WithScheme() {
+    // Paths with schemes should be returned as-is
+    String hdfsPath = "hdfs://namenode:8020/user/data/file.txt";
+    assertEquals( hdfsPath, KettleVFS.normalizeFilePath( hdfsPath ) );
+
+    String s3Path = "s3://bucket/folder/file.txt";
+    assertEquals( s3Path, KettleVFS.normalizeFilePath( s3Path ) );
+
+    // file:// paths should be preserved
+    String filePath = "file:///tmp/test.ktr";
+    assertEquals( filePath, KettleVFS.normalizeFilePath( filePath ) );
+
+    // file:// paths with URL-encoded characters should be preserved
+    String encodedFilePath = "file:///tmp/my%20folder/test.ktr";
+    assertEquals( encodedFilePath, KettleVFS.normalizeFilePath( encodedFilePath ) );
+  }
+
+  @Test
+  public void testNormalizeFilePath_WithVariables() {
+    // Paths with unresolved variables should be returned as-is
+    String pathWithVar = "${Internal.Entry.Current.Directory}/Output.ktr";
+    assertEquals( pathWithVar, KettleVFS.normalizeFilePath( pathWithVar ) );
+  }
+
+  @Test
+  public void testNormalizeFilePath_LocalPathGetsFileScheme() {
+    // Test that local paths get file:// prefix
+    String localPath = "/tmp/test/file.ktr";
+    String result = KettleVFS.normalizeFilePath( localPath );
+    assertTrue( result.startsWith( "file://" ) );
+    assertTrue( result.endsWith( "file.ktr" ) );
+  }
+
+  @Test
+  public void testNormalizeFilePath_WindowsAndRelativeLocalPaths() {
+    String windowsPath = "C:\\tmp\\test\\file.ktr";
+    String windowsResult = KettleVFS.normalizeFilePath( windowsPath );
+    assertTrue( windowsResult.startsWith( "file://" ) );
+    assertTrue( windowsResult.endsWith( "file.ktr" ) );
+
+    String relativePath = "relative/path/file.ktr";
+    String relativeResult = KettleVFS.normalizeFilePath( relativePath );
+    assertTrue( relativeResult.startsWith( "file://" ) );
+    assertTrue( relativeResult.endsWith( "file.ktr" ) );
   }
 
 }

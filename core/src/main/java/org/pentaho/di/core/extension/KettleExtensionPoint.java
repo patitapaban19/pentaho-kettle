@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.core.extension;
 
@@ -109,17 +101,18 @@ public enum KettleExtensionPoint {
     BeforeCheckStep( "BeforeCheckStep", "Right before a step is about to be verified." ),
     AfterCheckStep( "AfterCheckStep", "After a step has been checked for warnings/errors." ),
 
+    BeforeCarteStartup( "BeforeCarteStartup", "Right before the Carte webserver is started" ),
     CarteStartup( "CarteStartup", "Right after the Carte webserver has started and is fully functional" ),
     CarteShutdown( "CarteShutdown", "Right before the Carte webserver will shut down" ),
 
     SpoonViewTreeExtension( "SpoonViewTreeExtension", "View tree spoon extension" ),
     SpoonPopupMenuExtension( "SpoonPopupMenuExtension", "Pop up menu extension for the view tree" ),
     SpoonTreeDelegateExtension( "SpoonTreeDelegateExtension", "During the SpoonTreeDelegate execution" ),
+
+  // Removed SpoonOpenSaveRepository Extension Point as per BACKLOG-36769
     SpoonOpenSaveRepository( "SpoonOpenSaveRepository", "Open the repository browser" ),
     SpoonOpenSaveNew( "SpoonOpenSaveNew", "Open the new file browser" ),
     SpoonBrowserFunction( "SpoonBrowserFunction", "Generic browser function handler" ),
-    GetFieldsExtension( "GetFieldsExtension", "Get Fields dialog" ),
-
     RepositoryImporterPatchTransStep( "RepositoryImporterPatchTransStep", "Patch the step in a transformation during repository import" ),
     RepositoryExporterPatchTransStep( "RepositoryExporterPatchTransStep", "Patch the step in a transformation during repository export" ),
     RequestLoginToRepository( "RequestLoginToRepository", "Request to login into repository" ),
@@ -129,8 +122,13 @@ public enum KettleExtensionPoint {
     BeforeSaveToRepository( "BeforeSaveToRepository", "Before meta is saved to the repository" ),
     AfterDeleteRepositoryObject( "AfterDeleteRepositoryObject",
       "After an object has been deleted from the repository" ),
+    /** Argument is the repository being changed to, or null if disconnecting */
+    RepositoryChanging( "RepositoryChanging", "The process of connecting/disconnecting to/from a repository has been initiated but not yet completed" ),
 
-    TransformationCreateNew( "TransformationCreateNew", "Create a New Empty Transformation in Spoon" );
+   TransformationCreateNew( "TransformationCreateNew", "Create a New Empty Transformation in Spoon" ),
+   JobCreateNew( "JobCreateNew", "Create a New Empty Job in Spoon" ),
+   TransSharedObjectsLoaded( "TransSharedObjectsLoaded", "After the shared objects are loaded in Transformations." ),
+   JobSharedObjectsLoaded( "JobSharedObjectsLoaded", "After the shared objects are loaded in Job." );
 
 
   public String id;

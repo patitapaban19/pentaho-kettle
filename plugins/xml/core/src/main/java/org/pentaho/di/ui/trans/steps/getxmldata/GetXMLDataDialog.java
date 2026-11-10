@@ -1,25 +1,17 @@
 //CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.trans.steps.getxmldata;
 
@@ -1177,7 +1169,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
         try {
           GetXMLDataMeta tfii = new GetXMLDataMeta();
           getInfo( tfii );
-          FileInputList fileInputList = tfii.getFiles( transMeta );
+          FileInputList fileInputList = tfii.getFiles( transMeta.getBowl(), transMeta );
           String[] files = fileInputList.getFileStrings();
           if ( files != null && files.length > 0 ) {
             EnterSelectionDialog esd =
@@ -1220,7 +1212,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
     } );
 
     wbbFilename.addSelectionListener( new SelectionAdapterFileDialogTextVar( log, wFilename, transMeta,
-      new SelectionAdapterOptions( SelectionOperation.FILE_OR_FOLDER,
+      new SelectionAdapterOptions( transMeta.getBowl(), SelectionOperation.FILE_OR_FOLDER,
         new FilterType[] { FilterType.ALL, FilterType.XML }, FilterType.XML ) ) );
 
     // Detect X or ALT-F4 or something that kills this window...
@@ -1397,7 +1389,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
         }
       } else {
 
-        FileInputList fileinputList = meta.getFiles( transMeta );
+        FileInputList fileinputList = meta.getFiles( transMeta.getBowl(), transMeta );
 
         if ( fileinputList.nrOfFiles() > 0 ) {
           // Check the first file
@@ -1483,7 +1475,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
         }
       } else {
 
-        FileInputList inputList = meta.getFiles( transMeta );
+        FileInputList inputList = meta.getFiles( transMeta.getBowl(), transMeta );
 
         if ( inputList.getFiles().size() > 0 ) {
           populateFields( meta, KettleVFS.getFilename( inputList.getFile( 0 ) ), false, false, clearFields );
@@ -2036,7 +2028,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
               .getEncoding() );
     }
     if ( pd != null ) {
-      list_xpath = pd.open();
+      list_xpath = pd.open( transMeta.getBowl() );
       if ( list_xpath != null ) {
         EnterSelectionDialog s =
             new EnterSelectionDialog( shell, list_xpath, BaseMessages.getString( PKG,
@@ -2070,7 +2062,7 @@ public class GetXMLDataDialog extends BaseStepDialog implements StepDialogInterf
               .getEncoding(), transMeta.environmentSubstitute( meta.getLoopXPath() ) );
     }
     if ( prd != null ) {
-      fields = prd.open();
+      fields = prd.open( transMeta.getBowl() );
       if ( fields != null ) {
         if ( clearFields == SWT.YES ) {
           wFields.clearAll( false );

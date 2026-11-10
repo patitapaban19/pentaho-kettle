@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.ui.core.widget;
 
 import org.apache.commons.vfs2.FileObject;
@@ -117,7 +109,8 @@ public class VFSFileSelection extends Composite {
     FileObject root;
 
     try {
-      root = KettleVFS.getFileObject( curFile != null ? curFile : Const.getUserHomeDirectory() );
+      root = KettleVFS.getInstance( abstractMeta.getBowl() )
+        .getFileObject( curFile != null ? curFile : Const.getUserHomeDirectory() );
       VfsFileChooserDialog vfsFileChooser = Spoon.getInstance().getVfsFileChooserDialog( root.getParent(), root );
       if ( StringUtil.isEmpty( initialScheme ) ) {
         initialScheme = "file";
@@ -142,7 +135,8 @@ public class VFSFileSelection extends Composite {
     String parentFolder = null;
     try {
       parentFolder =
-        KettleVFS.getFileObject( abstractMeta.environmentSubstitute( abstractMeta.getFilename() ) ).getParent().toString();
+        KettleVFS.getInstance( abstractMeta.getBowl() )
+          .getFileObject( abstractMeta.environmentSubstitute( abstractMeta.getFilename() ) ).getParent().toString();
     } catch ( Exception e ) {
       // Take no action
     }

@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 /*
  * Created on 18-mei-2003
@@ -26,7 +18,7 @@
  */
 package org.pentaho.di.ui.shapefilereader;
 
-import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CCombo;
 import org.eclipse.swt.events.FocusListener;
@@ -293,6 +285,7 @@ public class ShapeFileReaderDialog extends BaseStepDialog implements StepDialogI
                     wShape,
                     transMeta,
                     new SelectionAdapterOptions(
+                            transMeta.getBowl(),
                             SelectionOperation.FILE,
                             new FilterType[] { FilterType.SHP, FilterType.ALL },
                             FilterType.SHP,
@@ -311,6 +304,7 @@ public class ShapeFileReaderDialog extends BaseStepDialog implements StepDialogI
                     wDbf,
                     transMeta,
                     new SelectionAdapterOptions(
+                            transMeta.getBowl(),
                             SelectionOperation.FILE,
                             new FilterType[] { FilterType.DBF, FilterType.ALL },
                             FilterType.DBF,

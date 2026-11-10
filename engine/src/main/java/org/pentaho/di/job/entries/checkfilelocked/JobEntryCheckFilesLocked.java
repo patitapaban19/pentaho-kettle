@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.job.entries.checkfilelocked;
 
@@ -265,7 +257,8 @@ public class JobEntryCheckFilesLocked extends JobEntryBase implements Cloneable,
     String realFileFolderName = environmentSubstitute( filename );
     String realWildcard = environmentSubstitute( wildcard );
 
-    try ( FileObject fileFolder = KettleVFS.getFileObject( realFileFolderName ) ) {
+    try ( FileObject fileFolder = KettleVFS.getInstance( parentJobMeta.getBowl() )
+          .getFileObject( realFileFolderName ) ) {
       FileObject[] files = new FileObject[] { fileFolder };
       if ( fileFolder.exists() ) {
         // the file or folder exists
@@ -306,7 +299,7 @@ public class JobEntryCheckFilesLocked extends JobEntryBase implements Cloneable,
     for ( int i = 0; i < files.length && !oneFileLocked; i++ ) {
       FileObject file = files[i];
       String filename = KettleVFS.getFilename( file );
-      LockFile locked = new LockFile( filename );
+      LockFile locked = new LockFile( parentJobMeta.getBowl(), filename );
       if ( locked.isLocked() ) {
         oneFileLocked = true;
         logError( BaseMessages.getString( PKG, "JobCheckFilesLocked.Log.FileLocked", filename ) );
@@ -342,7 +335,7 @@ public class JobEntryCheckFilesLocked extends JobEntryBase implements Cloneable,
 
           String shortFilename = info.getFile().getName().getBaseName();
 
-          if ( !info.getFile().getParent().equals( info.getBaseFolder() ) ) {
+          if ( !info.getFile().getParent().getName().getURI().equals( info.getBaseFolder().getName().getURI() ) ) {
             // Not in the Base Folder..Only if include sub folders
             if ( includeSubfolders ) {
               returncode = includeFileCheck( info, shortFilename );
@@ -430,7 +423,7 @@ public class JobEntryCheckFilesLocked extends JobEntryBase implements Cloneable,
 
   public void check( List<CheckResultInterface> remarks, JobMeta jobMeta, VariableSpace space,
     Repository repository, IMetaStore metaStore ) {
-    boolean res = JobEntryValidatorUtils.andValidator().validate( this, "arguments", remarks,
+    boolean res = JobEntryValidatorUtils.andValidator().validate( jobMeta.getBowl(), this, "arguments", remarks,
         AndValidator.putValidators( JobEntryValidatorUtils.notNullValidator() ) );
 
     if ( res ) {
@@ -440,7 +433,7 @@ public class JobEntryCheckFilesLocked extends JobEntryBase implements Cloneable,
         JobEntryValidatorUtils.fileExistsValidator() );
 
       for ( int i = 0; i < arguments.length; i++ ) {
-        JobEntryValidatorUtils.andValidator().validate( this, "arguments[" + i + "]", remarks, ctx );
+        JobEntryValidatorUtils.andValidator().validate( jobMeta.getBowl(), this, "arguments[" + i + "]", remarks, ctx );
       }
     }
   }

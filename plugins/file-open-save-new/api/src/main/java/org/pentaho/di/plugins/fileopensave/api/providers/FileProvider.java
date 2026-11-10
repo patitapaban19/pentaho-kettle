@@ -1,28 +1,24 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2019 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.plugins.fileopensave.api.providers;
 
+import org.pentaho.di.core.bowl.Bowl;
+import org.pentaho.di.core.exception.KettleFileException;
+import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.plugins.fileopensave.api.file.FileDetails;
+import org.pentaho.di.plugins.fileopensave.api.overwrite.OverwriteStatus;
 import org.pentaho.di.plugins.fileopensave.api.providers.exception.FileException;
 import org.pentaho.di.ui.core.FileDialogOperation;
 
@@ -47,7 +43,7 @@ public interface FileProvider<T extends File> {
    *
    * @return
    */
-  Tree getTree();
+  Tree<? extends T> getTree( Bowl bowl );
 
   /**
    * Optional method to get a filtered tree based on the connection type
@@ -55,39 +51,73 @@ public interface FileProvider<T extends File> {
    * @param connectionTypes
    * @return filteredTree
    */
-  default Tree getTree( List<String> connectionTypes ) {
-    return getTree();
+  default Tree<? extends T> getTree( Bowl bowl, List<String> connectionTypes ) {
+    return getTree( bowl );
   }
 
-  List<T> getFiles( T file, String filters ) throws FileException;
+  /**
+   * Optional method to get a tree with additional info about the other types of filtering
+   * @param bowl
+   * @param connectionTypes
+   * @param fileDialogOperation for any other request-specific filtering
+   * @return
+   */
+  default Tree<? extends T> getTree( Bowl bowl, List<String> connectionTypes, FileDialogOperation fileDialogOperation ) {
+    return getTree( bowl, connectionTypes );
+  }
 
-  List<T> delete( List<T> files ) throws FileException;
+  /**
+   * Works kind of like a resolve.  It will return a mewly created file object if the file received exists physically,
+   * or null if the file specified does not exist.
+   *
+   * @param file
+   * @param filters
+   * @param space
+   * @return
+   * @throws FileException
+   */
+  List<T> getFiles( Bowl bowl, T file, String filters, VariableSpace space ) throws FileException;
 
-  T add( T folder ) throws FileException;
+  List<T> searchFiles( Bowl bowl, T file, String filters, String searchString, VariableSpace space ) throws FileException;
 
-  T getFile( T file );
+  List<T> delete( Bowl bowl, List<T> files, VariableSpace space ) throws FileException;
 
-  boolean fileExists( T dir, String path ) throws FileException;
+  T add( Bowl bowl, T folder, VariableSpace space ) throws FileException;
 
-  String getNewName( T destDir, String newPath ) throws FileException;
+  T getFile( Bowl bowl, T file, VariableSpace space );
 
-  String sanitizeName( T destDir, String newPath );
+  boolean fileExists( Bowl bowl, T dir, String path, VariableSpace space ) throws FileException;
 
-  boolean isSame( File file1, File file2 );
+  String getNewName( Bowl bowl, T destDir, String newPath, VariableSpace space ) throws FileException;
 
-  T rename( T file, String newPath, boolean overwrite ) throws FileException;
+  String sanitizeName( Bowl bowl, T destDir, String newPath );
 
-  T copy( T file, String toPath, boolean overwrite ) throws FileException;
+  boolean isSame( Bowl bowl, File file1, File file2 );
 
-  T move( T file, String toPath, boolean overwrite ) throws FileException;
+  T rename( Bowl bowl, T file, String newPath, OverwriteStatus overwrite, VariableSpace space ) throws FileException;
 
-  InputStream readFile( T file ) throws FileException;
+  T copy( Bowl bowl, T file, String toPath, OverwriteStatus overwrite, VariableSpace space ) throws FileException;
 
-  T writeFile( InputStream inputStream, T destDir, String path, boolean overwrite ) throws FileException;
+  T move( Bowl bowl, T file, String toPath, OverwriteStatus overwrite, VariableSpace space ) throws FileException;
 
-  T getParent( T file );
+  InputStream readFile( Bowl bowl, T file, VariableSpace space ) throws FileException;
+
+  T writeFile( Bowl bowl, InputStream inputStream, T destDir, String path, OverwriteStatus overwriteStatus,
+               VariableSpace space ) throws FileException, KettleFileException;
+
+  T getParent( Bowl bowl, T file );
 
   void clearProviderCache();
 
   void setFileProperties( FileDetails fileDetails, FileDialogOperation fileDialogOperation );
+
+
+  default T createDirectory( Bowl bowl, String parentPath, T file, String newDirectoryName )
+    throws FileException, KettleFileException {
+    throw new UnsupportedOperationException();
+  }
+
+  default File getFile( Bowl bowl, String path, boolean isDirectory ) {
+    throw new UnsupportedOperationException();
+  }
 }

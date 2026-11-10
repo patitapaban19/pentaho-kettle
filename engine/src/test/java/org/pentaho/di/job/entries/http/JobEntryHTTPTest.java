@@ -1,24 +1,16 @@
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2020 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 package org.pentaho.di.job.entries.http;
 
 import static org.junit.Assert.assertEquals;
@@ -53,6 +45,7 @@ import org.pentaho.di.core.encryption.TwoWayPasswordEncoderPluginType;
 import org.pentaho.di.core.exception.KettleException;
 import org.pentaho.di.core.plugins.PluginRegistry;
 import org.pentaho.di.core.util.EnvUtil;
+import org.pentaho.di.job.JobMeta;
 import org.pentaho.di.junit.rules.RestorePDIEngineEnvironment;
 import org.pentaho.di.repository.ObjectId;
 import org.pentaho.di.repository.kdr.KettleDatabaseRepository;
@@ -114,7 +107,7 @@ public class JobEntryHTTPTest {
   public void testDateTimeAddedFieldIsSetInTrue_WhenRepoReturnsTrue() throws KettleException {
     when( ktlDbRepMock.getJobEntryAttributeBoolean( objIdMock, "date_time_added" ) ).thenReturn( true );
 
-    jobEntryHttp.loadRep( ktlDbRepMock, ktlDbRepMock.getMetaStore(), objIdMock, null, null );
+    jobEntryHttp.loadRep( ktlDbRepMock, ktlDbRepMock.getRepositoryMetaStore(), objIdMock, null, null );
     verify( ktlDbRepMock, never() ).getJobEntryAttributeString( objIdMock, "date_time_added" );
     verify( ktlDbRepMock ).getJobEntryAttributeBoolean( objIdMock, "date_time_added" );
     assertTrue( "DateTimeAdded field should be TRUE.", jobEntryHttp.isDateTimeAdded() );
@@ -140,6 +133,7 @@ public class JobEntryHTTPTest {
     JobEntryHTTP basicHttpJobEntry = new JobEntryHTTP();
     basicHttpJobEntry.setTargetFilename( tempTargetFile.getAbsolutePath() );
     basicHttpJobEntry.setAddFilenameToResult( false );
+    basicHttpJobEntry.setParentJobMeta( new JobMeta() );
 
     // Test valid URL
     basicHttpJobEntry.setUrl( validURL );
@@ -147,6 +141,7 @@ public class JobEntryHTTPTest {
     assertEquals( 0L, result.getNrErrors() );
     assertEquals( HttpStatus.SC_OK, basicHttpJobEntry.getResponseStatusCode() );
     assertTrue( FileUtils.sizeOf( tempTargetFile ) > 0 );
+    tempTargetFile.delete();
 
     // Test invalid URL
     result = new Result();
@@ -155,6 +150,7 @@ public class JobEntryHTTPTest {
     assertEquals( 1L, result.getNrErrors() );
     assertEquals( 0, basicHttpJobEntry.getResponseStatusCode() );
     assertTrue( FileUtils.sizeOf( tempTargetFile ) == 0 );
+    tempTargetFile.delete();
   }
 
   @Test
@@ -166,6 +162,7 @@ public class JobEntryHTTPTest {
     JobEntryHTTP basicHttpJobEntry = new JobEntryHTTP();
     basicHttpJobEntry.setTargetFilename( tempTargetFile.getAbsolutePath() );
     basicHttpJobEntry.setAddFilenameToResult( false );
+    basicHttpJobEntry.setParentJobMeta( new JobMeta() );
 
     // Test no user or password when required
     basicHttpJobEntry.setUrl( passwordURL );
@@ -204,6 +201,7 @@ public class JobEntryHTTPTest {
     JobEntryHTTP basicHttpJobEntry = new JobEntryHTTP();
     basicHttpJobEntry.setTargetFilename( tempTargetFile.getAbsolutePath() );
     basicHttpJobEntry.setAddFilenameToResult( false );
+    basicHttpJobEntry.setParentJobMeta( new JobMeta() );
 
     // Test URL without proxy
     basicHttpJobEntry.setUrl( proxyTestURL );

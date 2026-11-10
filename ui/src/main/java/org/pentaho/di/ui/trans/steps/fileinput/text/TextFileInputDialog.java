@@ -1,25 +1,17 @@
 //CHECKSTYLE:FileLength:OFF
 /*! ******************************************************************************
  *
- * Pentaho Data Integration
+ * Pentaho
  *
- * Copyright (C) 2002-2021 by Hitachi Vantara : http://www.pentaho.com
+ * Copyright (C) 2024 - 2026 by Pentaho Canada Inc. : http://www.pentaho.com
  *
- *******************************************************************************
+ * Use of this software is governed by the Business Source License included
+ * in the LICENSE.TXT file.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with
- * the License. You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
+ * Change Date: 2030-06-15
  ******************************************************************************/
+
+
 
 package org.pentaho.di.ui.trans.steps.fileinput.text;
 
@@ -27,7 +19,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -89,11 +80,11 @@ import org.pentaho.di.trans.TransPreviewFactory;
 import org.pentaho.di.trans.step.BaseStepMeta;
 import org.pentaho.di.trans.step.StepDialogInterface;
 import org.pentaho.di.trans.step.StepMeta;
+import org.pentaho.di.trans.steps.common.CsvInputAwareMeta;
 import org.pentaho.di.trans.steps.file.BaseFileField;
-import org.pentaho.di.trans.steps.fileinput.text.EncodingType;
 import org.pentaho.di.trans.steps.fileinput.text.TextFileFilter;
+import org.pentaho.di.trans.steps.fileinput.text.TextFileInputHelper;
 import org.pentaho.di.trans.steps.fileinput.text.TextFileInputMeta;
-import org.pentaho.di.trans.steps.fileinput.text.TextFileInputUtils;
 import org.pentaho.di.ui.core.dialog.EnterNumberDialog;
 import org.pentaho.di.ui.core.dialog.EnterSelectionDialog;
 import org.pentaho.di.ui.core.dialog.EnterTextDialog;
@@ -109,7 +100,6 @@ import org.pentaho.di.ui.core.widget.TableView;
 import org.pentaho.di.ui.core.widget.TextVar;
 import org.pentaho.di.ui.trans.dialog.TransPreviewProgressDialog;
 import org.pentaho.di.ui.trans.step.BaseStepDialog;
-import org.pentaho.di.trans.steps.common.CsvInputAwareMeta;
 import org.pentaho.di.ui.trans.step.common.CsvInputAwareImportProgressDialog;
 import org.pentaho.di.ui.trans.step.common.CsvInputAwareStepDialog;
 import org.pentaho.di.ui.trans.step.common.GetFieldsCapableStepDialog;
@@ -667,7 +657,7 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
 
     // Listen to the Browse... button
     wbbFilename.addSelectionListener( new SelectionAdapterFileDialogTextVar( log, wFilename, transMeta,
-      new SelectionAdapterOptions( SelectionOperation.FILE_OR_FOLDER,
+      new SelectionAdapterOptions( transMeta.getBowl(), SelectionOperation.FILE_OR_FOLDER,
         new FilterType[] { FilterType.TXT, FilterType.CSV, FilterType.ALL }, FilterType.TXT ) ) );
 
     // Detect X or ALT-F4 or something that kills this window...
@@ -697,8 +687,9 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
     TextFileInputMeta tfii = new TextFileInputMeta();
     getInfo( tfii, true );
     String[] files =
-        FileInputList.createFilePathList( transMeta, tfii.inputFiles.fileName, tfii.inputFiles.fileMask,
-            tfii.inputFiles.excludeFileMask, tfii.inputFiles.fileRequired, tfii.inputFiles.includeSubFolderBoolean() );
+        FileInputList.createFilePathList( transMeta.getBowl(), transMeta, tfii.inputFiles.fileName,
+            tfii.inputFiles.fileMask, tfii.inputFiles.excludeFileMask, tfii.inputFiles.fileRequired,
+            tfii.inputFiles.includeSubFolderBoolean() );
 
     if ( files != null && files.length > 0 ) {
       EnterSelectionDialog esd = new EnterSelectionDialog( shell, files, "Files read", "Files read:" );
@@ -2345,7 +2336,7 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
 
   private void getFieldsData( TextFileInputMeta in, boolean insertAtTop, final boolean reloadAllFields,
                               final Set<String> newFieldNames ) {
-    final List<String> lowerCaseNewFieldNames = newFieldNames == null ? new ArrayList()
+    final List<String> lowerCaseNewFieldNames = newFieldNames == null ? new ArrayList<>()
       : newFieldNames.stream().map( String::toLowerCase ).collect( Collectors.toList() );
     for ( int i = 0; i < in.inputFields.length; i++ ) {
       BaseFileField field = in.inputFields[i];
@@ -2609,7 +2600,8 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
 
   @Override
   public String[] getFieldNames( final TextFileInputMeta meta ) {
-    return getFieldNames( (CsvInputAwareMeta) meta );
+    TextFileInputHelper helper = (TextFileInputHelper) input.getStepHelperInterface();
+    return helper.getFieldNames( transMeta, meta );
   }
 
   public static int guessPrecision( double d ) {
@@ -2697,13 +2689,13 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
     getInfo( info, true );
 
     try {
-      if ( info.getFileInputList( transMeta ).nrOfFiles() > 0 ) {
+      if ( info.getFileInputList( transMeta.getBowl(), transMeta ).nrOfFiles() > 0 ) {
         String shellText = BaseMessages.getString( PKG, "TextFileInputDialog.LinesToView.DialogTitle" );
         String lineText = BaseMessages.getString( PKG, "TextFileInputDialog.LinesToView.DialogMessage" );
         EnterNumberDialog end = new EnterNumberDialog( shell, 100, shellText, lineText );
         int nrLines = end.open();
         if ( nrLines >= 0 ) {
-          List<String> linesList = getFirst( nrLines, skipHeaders );
+          List<String> linesList = getFirst( info, nrLines, skipHeaders );
           if ( linesList != null && linesList.size() > 0 ) {
             String firstlines = "";
             for ( String aLinesList : linesList ) {
@@ -2737,84 +2729,23 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
   }
 
   // Get the first x lines
-  private List<String> getFirst( int nrlines, boolean skipHeaders ) throws KettleException {
-    TextFileInputMeta meta = new TextFileInputMeta();
-    getInfo( meta, true );
-    FileInputList textFileList = meta.getFileInputList( transMeta );
-
-    InputStream fi;
-    CompressionInputStream f = null;
-    StringBuilder lineStringBuilder = new StringBuilder( 256 );
-    int fileFormatType = meta.getFileFormatTypeNr();
-
-    List<String> retval = new ArrayList<>();
-
-    if ( textFileList.nrOfFiles() > 0 ) {
-      FileObject file = textFileList.getFile( 0 );
-      try {
-        fi = KettleVFS.getInputStream( file );
-
-        CompressionProvider provider =
-            CompressionProviderFactory.getInstance().createCompressionProviderInstance( meta.content.fileCompression );
-        f = provider.createInputStream( fi );
-
-        InputStreamReader reader;
-        if ( meta.getEncoding() != null && meta.getEncoding().length() > 0 ) {
-          reader = new InputStreamReader( f, meta.getEncoding() );
-        } else {
-          reader = new InputStreamReader( f );
-        }
-        EncodingType encodingType = EncodingType.guessEncodingType( reader.getEncoding() );
-
-        int linenr = 0;
-        int maxnr = nrlines + ( meta.content.header ? meta.content.nrHeaderLines : 0 );
-
-        if ( skipHeaders ) {
-          // Skip the header lines first if more then one, it helps us position
-          if ( meta.content.layoutPaged && meta.content.nrLinesDocHeader > 0 ) {
-            TextFileInputUtils.skipLines( log, reader, encodingType, fileFormatType,
-              lineStringBuilder,  meta.content.nrLinesDocHeader - 1, meta.getEnclosure(), meta.getEscapeCharacter(), 0 );
-          }
-
-          // Skip the header lines first if more then one, it helps us position
-          if ( meta.content.header && meta.content.nrHeaderLines > 0 ) {
-            TextFileInputUtils.skipLines( log, reader, encodingType, fileFormatType,
-              lineStringBuilder,  meta.content.nrHeaderLines - 1, meta.getEnclosure(), meta.getEscapeCharacter(), 0 );
-          }
-        }
-
-        String line = TextFileInputUtils.getLine( log, reader, encodingType, fileFormatType, lineStringBuilder, meta.getEnclosure(), meta.getEscapeCharacter() );
-        while ( line != null && ( linenr < maxnr || nrlines == 0 ) ) {
-          retval.add( line );
-          linenr++;
-          line = TextFileInputUtils.getLine( log, reader, encodingType, fileFormatType, lineStringBuilder, meta.getEnclosure(), meta.getEscapeCharacter() );
-        }
-      } catch ( Exception e ) {
-        throw new KettleException( BaseMessages.getString( PKG, "TextFileInputDialog.Exception.ErrorGettingFirstLines",
-            "" + nrlines, file.getName().getURI() ), e );
-      } finally {
-        try {
-          if ( f != null ) {
-            f.close();
-          }
-        } catch ( Exception e ) {
-          // Ignore errors
-        }
-      }
-    }
-
-    return retval;
+  private List<String> getFirst( TextFileInputMeta meta, int nrlines, boolean skipHeaders ) throws KettleException {
+    TextFileInputHelper helper = (TextFileInputHelper) input.getStepHelperInterface();
+    return helper.getFirst( meta, transMeta, nrlines, skipHeaders );
   }
 
   private void getFixed() {
     TextFileInputMeta info = new TextFileInputMeta();
+    Trans trans = new Trans( transMeta, null );
+    trans.rowsets = new ArrayList<>();
     getInfo( info, true );
 
     Shell sh = new Shell( shell, SWT.DIALOG_TRIM | SWT.RESIZE | SWT.MAX | SWT.MIN );
 
     try {
-      List<String> rows = getFirst( 50, false );
-      fields = getFields( info, rows );
+      List<String> rows = getFirst( info, 50, false );
+      TextFileInputHelper helper = (TextFileInputHelper) input.getStepHelperInterface();
+      fields =  helper.getFields( info, rows );
 
       final TextFileImportWizardPage1 page1 = new TextFileImportWizardPage1( "1", props, rows, fields );
       page1.createControl( sh );
@@ -2873,71 +2804,6 @@ public class TextFileInputDialog extends BaseStepDialog implements StepDialogInt
       new ErrorDialog( shell, BaseMessages.getString( PKG, "TextFileInputDialog.ErrorShowingFixedWizard.DialogTitle" ),
           BaseMessages.getString( PKG, "TextFileInputDialog.ErrorShowingFixedWizard.DialogMessage" ), e );
     }
-  }
-
-  private Vector<TextFileInputFieldInterface> getFields( TextFileInputMeta info, List<String> rows ) {
-    Vector<TextFileInputFieldInterface> fields = new Vector<>();
-
-    int maxsize = 0;
-    for ( String row : rows ) {
-      int len = row.length();
-      if ( len > maxsize ) {
-        maxsize = len;
-      }
-    }
-
-    int prevEnd = 0;
-    int dummynr = 1;
-
-    for ( int i = 0; i < info.inputFields.length; i++ ) {
-      BaseFileField f = info.inputFields[i];
-
-      // See if positions are skipped, if this is the case, add dummy fields...
-      if ( f.getPosition() != prevEnd ) { // gap
-
-        BaseFileField field = new BaseFileField( "Dummy" + dummynr, prevEnd, f.getPosition() - prevEnd );
-        field.setIgnored( true ); // don't include in result by default.
-        fields.add( field );
-        dummynr++;
-      }
-
-      BaseFileField field = new BaseFileField( f.getName(), f.getPosition(), f.getLength() );
-      field.setType( f.getType() );
-      field.setIgnored( false );
-      field.setFormat( f.getFormat() );
-      field.setPrecision( f.getPrecision() );
-      field.setTrimType( f.getTrimType() );
-      field.setDecimalSymbol( f.getDecimalSymbol() );
-      field.setGroupSymbol( f.getGroupSymbol() );
-      field.setCurrencySymbol( f.getCurrencySymbol() );
-      field.setRepeated( f.isRepeated() );
-      field.setNullString( f.getNullString() );
-
-      fields.add( field );
-
-      prevEnd = field.getPosition() + field.getLength();
-    }
-
-    if ( info.inputFields.length == 0 ) {
-      BaseFileField field = new BaseFileField( "Field1", 0, maxsize );
-      fields.add( field );
-    } else {
-      // Take the last field and see if it reached until the maximum...
-      BaseFileField f = info.inputFields[info.inputFields.length - 1];
-
-      int pos = f.getPosition();
-      int len = f.getLength();
-      if ( pos + len < maxsize ) {
-        // If not, add an extra trailing field!
-        BaseFileField field = new BaseFileField( "Dummy" + dummynr, pos + len, maxsize - pos - len );
-        field.setIgnored( true ); // don't include in result by default.
-        fields.add( field );
-      }
-    }
-
-    Collections.sort( fields );
-
-    return fields;
   }
 
   /**
